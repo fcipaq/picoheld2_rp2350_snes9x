@@ -1,0 +1,610 @@
+/*
+ * Pico Engine - a library for the Pico Held 2 handheld
+ *
+ * Copyright (C) 2023 - 2025 Daniel Kammer (daniel.kammer@web.de)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+ 
+#include <hwcfg.h>
+
+#if defined LCD_IF_DPI
+
+#pragma once
+
+#include <typedefs.h>
+
+typedef enum
+{
+  END_LIST,
+  DELAY,
+  WRITE,
+} spi_operation_type_t;
+
+typedef enum
+{
+  SPI_COMMAND,
+  SPI_DATA
+} spi_dc_t;
+
+void lcd_spi_send(const uint8_t* init_seq);
+
+/*************************** init sequences ***********************/
+
+// *************** Init code for 720x720 square ZJY400-8532ANT by SUNMAXIC (NV3052C controller IC) ***************
+static const uint8_t nv3052c_sunmaxic_init_operations[] = {
+  WRITE, 2, 0x36, 0x09, //default: 0X0a, // 0x09 flipped vertically and horizontally, 0a: default
+
+	WRITE, 1, 0x11,  // Sleep out
+	
+  DELAY, 120,
+	
+	WRITE, 1, 0x29,  // Display on
+
+  END_LIST
+};
+
+
+// *************** Init code for 720x720 square ER-TFT3.95-1 from buydisplay (NV3052C controller IC) ***************
+// same as from ecyberspace
+static const uint8_t nv3052c_buydisplay_init_operations[] = {
+	// 720X720 BOE3.95 6G （B3 QV040YNQ-N80）
+
+// EXT page 1
+	WRITE, 2, 0xFF, 0x30,              
+	WRITE, 2, 0xFF, 0x52,
+	WRITE, 2, 0xFF, 0x01,
+	
+	WRITE, 2, 0xE3, 0x00,
+	WRITE, 2, 0x0A, 0x00,
+	WRITE, 2, 0x23, 0x20,  // 0x20=DE, 0x00=DE+SYNC
+	WRITE, 2, 0x24, 0x0f,
+	WRITE, 2, 0x25, 0x14,
+	WRITE, 2, 0x26, 0x2E,
+	WRITE, 2, 0x27, 0x2E,
+	WRITE, 2, 0x29, 0x02,
+	WRITE, 2, 0x2A, 0xCF,
+	WRITE, 2, 0x32, 0x34,
+	WRITE, 2, 0x38, 0x9C,  // vcom_adj
+	WRITE, 2, 0x39, 0xA7,  // vcom_adj
+	WRITE, 2, 0x3A, 0x77,  // vcom_adj
+	WRITE, 2, 0x3B, 0x94,
+	WRITE, 2, 0x40, 0x07,
+	WRITE, 2, 0x42, 0x6D,
+	WRITE, 2, 0x43, 0x83,
+	WRITE, 2, 0x81, 0x00,
+	WRITE, 2, 0x91, 0x57,  //extpw ctrl2
+	WRITE, 2, 0x92, 0x57,  //extpw ctrl3
+	WRITE, 2, 0xA0, 0x52,
+	WRITE, 2, 0xA1, 0x50,
+	WRITE, 2, 0xA4, 0x9C,
+	WRITE, 2, 0xA7, 0x02,
+	WRITE, 2, 0xA8, 0x02,
+	WRITE, 2, 0xA9, 0x02,
+	WRITE, 2, 0xAA, 0xA8,
+	WRITE, 2, 0xAB, 0x28,
+	WRITE, 2, 0xAE, 0xD2,
+	WRITE, 2, 0xAF, 0x02,
+	WRITE, 2, 0xB0, 0xD2,
+	WRITE, 2, 0xB2, 0x26,
+	WRITE, 2, 0xB3, 0x26,
+	
+// EXT table 2
+	WRITE, 2, 0xFF, 0x30,
+	WRITE, 2, 0xFF, 0x52,
+	WRITE, 2, 0xFF, 0x02,
+	
+	// PGAM (gam_conf)
+	WRITE, 2, 0xB0, 0x02,
+	WRITE, 2, 0xB1, 0x0E,
+	WRITE, 2, 0xB2, 0x08,
+	WRITE, 2, 0xB3, 0x29,
+	WRITE, 2, 0xB4, 0x28,
+	WRITE, 2, 0xB5, 0x37,
+	WRITE, 2, 0xB6, 0x12,
+	WRITE, 2, 0xB7, 0x32,
+	WRITE, 2, 0xB8, 0x0B,
+	WRITE, 2, 0xB9, 0x03,
+	WRITE, 2, 0xBA, 0x0E,
+	WRITE, 2, 0xBB, 0x0D,
+	WRITE, 2, 0xBC, 0x10,
+	WRITE, 2, 0xBD, 0x13,
+	WRITE, 2, 0xBE, 0x18,
+	WRITE, 2, 0xBF, 0x0F,
+	WRITE, 2, 0xC0, 0x16,
+	WRITE, 2, 0xC1, 0x08,
+
+	// NGAM (gam_conf)
+	WRITE, 2, 0xD0, 0x05,
+	WRITE, 2, 0xD1, 0x0B,
+	WRITE, 2, 0xD2, 0x03,
+	WRITE, 2, 0xD3, 0x33,
+	WRITE, 2, 0xD4, 0x32,
+	WRITE, 2, 0xD5, 0x32,
+	WRITE, 2, 0xD6, 0x0F,
+	WRITE, 2, 0xD7, 0x39,
+	WRITE, 2, 0xD8, 0x0B,
+	WRITE, 2, 0xD9, 0x02,
+	WRITE, 2, 0xDA, 0x10,
+	WRITE, 2, 0xDB, 0x0F,
+	WRITE, 2, 0xDC, 0x11,
+	WRITE, 2, 0xDD, 0x14,
+	WRITE, 2, 0xDE, 0x1A,
+	WRITE, 2, 0xDF, 0x11,
+	WRITE, 2, 0xE0, 0x18,
+	WRITE, 2, 0xE1, 0x04,
+	
+// EXT table 3
+	WRITE, 2, 0xFF, 0x30,
+	WRITE, 2, 0xFF, 0x52,
+	WRITE, 2, 0xFF, 0x03,
+	
+// GIP	
+	WRITE, 2, 0x00, 0x00,
+	WRITE, 2, 0x01, 0x00,
+	WRITE, 2, 0x02, 0x00,
+	WRITE, 2, 0x03, 0x00,
+	WRITE, 2, 0x08, 0x0D,
+	WRITE, 2, 0x09, 0x0E,
+	WRITE, 2, 0x0A, 0x0F,
+	WRITE, 2, 0x0B, 0x10,
+	WRITE, 2, 0x20, 0x00,
+	WRITE, 2, 0x21, 0x00,
+	WRITE, 2, 0x22, 0x00,
+	WRITE, 2, 0x23, 0x00,
+	WRITE, 2, 0x28, 0x22,
+	WRITE, 2, 0x2A, 0xE9,
+	WRITE, 2, 0x2B, 0xE9,
+	WRITE, 2, 0x30, 0x00,
+	WRITE, 2, 0x31, 0x00,
+	WRITE, 2, 0x32, 0x00,
+	WRITE, 2, 0x33, 0x00,
+	WRITE, 2, 0x34, 0x01,
+	WRITE, 2, 0x35, 0x00,
+	WRITE, 2, 0x36, 0x00,
+	WRITE, 2, 0x37, 0x03,
+	WRITE, 2, 0x40, 0x0A,  
+	WRITE, 2, 0x41, 0x0B,  
+	WRITE, 2, 0x42, 0x0C,  
+	WRITE, 2, 0x43, 0x0D, 
+	WRITE, 2, 0x44, 0x22,
+	WRITE, 2, 0x45, 0xE4, 
+	WRITE, 2, 0x46, 0xE5,  
+	WRITE, 2, 0x47, 0x22,
+	WRITE, 2, 0x48, 0xE6,  
+	WRITE, 2, 0x49, 0xE7,
+	WRITE, 2, 0x50, 0x0E,  
+	WRITE, 2, 0x51, 0x0F,  
+	WRITE, 2, 0x52, 0x10,  
+	WRITE, 2, 0x53, 0x11,
+	
+	WRITE, 2, 0x54, 0x22,
+	WRITE, 2, 0x55, 0xE8,  
+	WRITE, 2, 0x56, 0xE9,  
+	WRITE, 2, 0x57, 0x22,
+	WRITE, 2, 0x58, 0xEA,  
+	WRITE, 2, 0x59, 0xEB,
+	
+	WRITE, 2, 0x60, 0x05,  
+	WRITE, 2, 0x61, 0x05,  
+	WRITE, 2, 0x65, 0x0A,  
+	WRITE, 2, 0x66, 0x0A,  
+	
+	//PANELU2 (?)
+	WRITE, 2, 0x80, 0x05,
+	WRITE, 2, 0x81, 0x00,
+	WRITE, 2, 0x82, 0x02,
+	WRITE, 2, 0x83, 0x04,
+	WRITE, 2, 0x84, 0x00,
+	WRITE, 2, 0x85, 0x00,
+	WRITE, 2, 0x86, 0x1f,
+	WRITE, 2, 0x87, 0x1f,
+	WRITE, 2, 0x88, 0x0a,
+	WRITE, 2, 0x89, 0x0c,
+	WRITE, 2, 0x8A, 0x0e,
+	WRITE, 2, 0x8B, 0x10,
+	
+	WRITE, 2, 0x96, 0x05,
+	WRITE, 2, 0x97, 0x00,
+	WRITE, 2, 0x98, 0x01,
+	WRITE, 2, 0x99, 0x03,
+	WRITE, 2, 0x9A, 0x00,
+	WRITE, 2, 0x9B, 0x00,
+	WRITE, 2, 0x9C, 0x1f, 
+	WRITE, 2, 0x9D, 0x1f, 
+	WRITE, 2, 0x9E, 0x09, 
+	WRITE, 2, 0x9F, 0x0b, 
+	WRITE, 2, 0xA0, 0x0d, 
+	WRITE, 2, 0xA1, 0x0f, 
+	   
+	WRITE, 2, 0xFF, 0x30,
+	WRITE, 2, 0xFF, 0x52,
+	WRITE, 2, 0xFF, 0x00,
+// END (exit EXTC)
+
+	//WRITE, 2, 0x36, 0x0a,  // MAD  // 0x02 = RGB, 0x0a = BGR
+
+  WRITE, 2, 0x36, 0x09, //default: 0X0a, // 0x09 flipped vertically and horizontally, 0a: default
+
+//	WRITE, 2, 0x3a, 0x60,  // 18 bit colors
+												
+ 	WRITE, 1, 0x11,  // Sleep out
+	
+  DELAY, 120,
+	
+	WRITE, 1, 0x29,  // Display on
+
+  END_LIST
+
+	
+};
+
+static const uint8_t nv3052c_generic_sleep_operations[] = {
+  // enter sleep
+  WRITE, 1, 0x28,
+  DELAY, 10,                        
+  WRITE, 1, 0x10, 
+  DELAY, 20,                                    
+
+  END_LIST
+};
+
+static const uint8_t nv3052c_generic_wake_operations[] = {
+  // enter sleep
+  WRITE, 1, 0x11,
+  DELAY, 120,
+  WRITE, 1, 0x29, 
+
+  END_LIST
+};
+
+// *************** Init code for 720x720 square by Startek ***************
+
+// codes for Star Tek display
+static const uint8_t nv3052c_startek_sleep_operations[] = {
+  // enter sleep
+  WRITE, 1, 0x28,
+  DELAY, 10,                        
+  WRITE, 1, 0x10, 
+  DELAY, 20,                                    
+
+  END_LIST
+};
+
+static const uint8_t nv3052c_startek_wake_operations[] = {
+  // enter sleep
+  WRITE, 1, 0x11,
+  DELAY, 120,
+  WRITE, 1, 0x29, 
+
+  END_LIST
+};
+
+static const uint8_t nv3052c_startek_init_operations[] = {
+//***************************************************************//LCD SETING
+  WRITE, 2, 0xFF, 0X30,  //PAGE01
+  WRITE, 2, 0xFF, 0X52, 
+  WRITE, 2, 0xFF, 0X01, 
+
+  WRITE, 2, 0xE3, 0X00, 
+  WRITE, 2, 0xF6, 0XC0, 
+  WRITE, 2, 0xF0, 0X00, 
+  WRITE, 2, 0x0A, 0X11, 
+  WRITE, 2, 0x23, 0X20, //RGB interface control, DE MODE PCLK-N 
+
+  WRITE, 2, 0x25, 0X14, 
+  WRITE, 2, 0x26, 0X2E, 
+  WRITE, 2, 0x27, 0X2E, 
+  WRITE, 2, 0x29, 0X02, 
+  WRITE, 2, 0x2A, 0XCF, 
+  WRITE, 2, 0x32, 0X34, 
+
+
+  WRITE, 2, 0x38, 0x9C, //VCOM_ADJ1
+  WRITE, 2, 0x39, 0xA7, //VCOM_ADJ2 
+  WRITE, 2, 0x3A, 0x7D, //VCOM_ADJ3
+  
+  WRITE, 2, 0x3B, 0X94, 
+  WRITE, 2, 0x40, 0X07, 
+  WRITE, 2, 0x42, 0X6D, 
+  WRITE, 2, 0x43, 0X83, 
+  WRITE, 2, 0x81, 0X00, 
+  WRITE, 2, 0x91, 0X57, 
+  WRITE, 2, 0x92, 0X57, 
+  WRITE, 2, 0xA0, 0X52, 
+  WRITE, 2, 0xA1, 0X50, 
+  WRITE, 2, 0xA4, 0X9C, 
+  WRITE, 2, 0xA7, 0X02, 
+  WRITE, 2, 0xA8, 0X02, 
+  WRITE, 2, 0xA9, 0X02, 
+  WRITE, 2, 0xAA, 0XA8, 
+  WRITE, 2, 0xAB, 0X28, 
+  WRITE, 2, 0xAE, 0XD2, 
+  WRITE, 2, 0xAF, 0X02, 
+  WRITE, 2, 0xB0, 0XD2, 
+  WRITE, 2, 0xB2, 0X26, 
+  WRITE, 2, 0xB3, 0X26, 
+
+  WRITE, 2, 0xFF, 0X30,  //PAGE02
+  WRITE, 2, 0xFF, 0X52, 
+  WRITE, 2, 0xFF, 0X02, 
+//**************GAMMA SET **************//
+  WRITE, 2, 0xB0, 0X02, 
+  WRITE, 2, 0xB1, 0X0E, 
+  WRITE, 2, 0xB2, 0X08, 
+  WRITE, 2, 0xB3, 0X29, 
+  WRITE, 2, 0xB4, 0X28, 
+  WRITE, 2, 0xB5, 0X37, 
+  WRITE, 2, 0xB6, 0X12, 
+  WRITE, 2, 0xB7, 0X32, 
+  WRITE, 2, 0xB8, 0X0B, 
+  WRITE, 2, 0xB9, 0X03, 
+  WRITE, 2, 0xBA, 0X0E, 
+  WRITE, 2, 0xBB, 0X0D, 
+  WRITE, 2, 0xBC, 0X10, 
+  WRITE, 2, 0xBD, 0X13, 
+  WRITE, 2, 0xBE, 0X18, 
+  WRITE, 2, 0xBF, 0X0F, 
+  WRITE, 2, 0xC0, 0X16, 
+  WRITE, 2, 0xC1, 0X08, 
+
+  WRITE, 2, 0xD0, 0X05, 
+  WRITE, 2, 0xD1, 0X0B, 
+  WRITE, 2, 0xD2, 0X03, 
+  WRITE, 2, 0xD3, 0X33, 
+  WRITE, 2, 0xD4, 0X32, 
+  WRITE, 2, 0xD5, 0X32, 
+  WRITE, 2, 0xD6, 0X0F, 
+  WRITE, 2, 0xD7, 0X39, 
+  WRITE, 2, 0xD8, 0X0B, 
+  WRITE, 2, 0xD9, 0X02, 
+  WRITE, 2, 0xDA, 0X10, 
+  WRITE, 2, 0xDB, 0X0F, 
+  WRITE, 2, 0xDC, 0X11, 
+  WRITE, 2, 0xDD, 0X14, 
+  WRITE, 2, 0xDE, 0X1A, 
+  WRITE, 2, 0xDF, 0X11, 
+  WRITE, 2, 0xE0, 0X18, 
+  WRITE, 2, 0xE1, 0X04, 
+//***************************************//
+  WRITE, 2, 0xFF, 0x30, 
+  WRITE, 2, 0xFF, 0x52, 
+  WRITE, 2, 0xFF, 0x03, //PAGE03 
+
+  WRITE, 2, 0x00, 0X00, 
+  WRITE, 2, 0x01, 0X00, 
+  WRITE, 2, 0x02, 0X00, 
+  WRITE, 2, 0x03, 0X00, 
+  WRITE, 2, 0x08, 0X0A, 
+  WRITE, 2, 0x09, 0X0B, 
+  WRITE, 2, 0x0A, 0X0C, 
+  WRITE, 2, 0x0B, 0X0D, 
+  WRITE, 2, 0x20, 0X00, 
+  WRITE, 2, 0x21, 0X00, 
+  WRITE, 2, 0x22, 0X00, 
+  WRITE, 2, 0x23, 0X00, 
+  WRITE, 2, 0x28, 0X22, 
+  WRITE, 2, 0x2A, 0Xe9, 
+  WRITE, 2, 0x2B, 0Xe9, 
+  WRITE, 2, 0x30, 0X00, 
+  WRITE, 2, 0x31, 0X00, 
+  WRITE, 2, 0x32, 0X00, 
+  WRITE, 2, 0x33, 0X00, 
+  WRITE, 2, 0x34, 0XA1, 
+  WRITE, 2, 0x35, 0X00, 
+  WRITE, 2, 0x36, 0X26,   
+  WRITE, 2, 0x37, 0X03, 
+  WRITE, 2, 0x40, 0X0D,   
+  WRITE, 2, 0x41, 0X0E,   
+  WRITE, 2, 0x42, 0X0F,   
+  WRITE, 2, 0x43, 0X10,   
+  WRITE, 2, 0x44, 0X22, 
+  WRITE, 2, 0x45, 0Xe4,   
+  WRITE, 2, 0x46, 0Xe5,   
+  WRITE, 2, 0x47, 0X22, 
+  WRITE, 2, 0x48, 0Xe6,   
+  WRITE, 2, 0x49, 0Xe7,   
+  WRITE, 2, 0x50, 0X11,   
+  WRITE, 2, 0x51, 0X12,   
+  WRITE, 2, 0x52, 0X13,   
+  WRITE, 2, 0x53, 0X14,   
+  WRITE, 2, 0x54, 0X22, 
+  WRITE, 2, 0x55, 0Xe8,   
+  WRITE, 2, 0x56, 0Xe9,   
+  WRITE, 2, 0x57, 0X22, 
+  WRITE, 2, 0x58, 0Xea,   
+  WRITE, 2, 0x59, 0Xeb,   
+  WRITE, 2, 0x60, 0X05,   
+  WRITE, 2, 0x61, 0X05,   
+  WRITE, 2, 0x65, 0X0A,   
+  WRITE, 2, 0x66, 0X0A,   
+  WRITE, 2, 0x80, 0X0f,     
+  WRITE, 2, 0x81, 0X0d,     
+  WRITE, 2, 0x82, 0X0b,     
+  WRITE, 2, 0x83, 0X09,     
+  WRITE, 2, 0x8A, 0X01,     
+  WRITE, 2, 0x8B, 0X1f,     
+  WRITE, 2, 0x8D, 0X00,     
+  WRITE, 2, 0x8E, 0X03,     
+  WRITE, 2, 0x90, 0X1f,     
+  WRITE, 2, 0x91, 0X1f,     
+  WRITE, 2, 0x92, 0X11,     
+  WRITE, 2, 0x94, 0X00,     
+  WRITE, 2, 0x95, 0X00,     
+  WRITE, 2, 0x96, 0X10,     
+  WRITE, 2, 0x97, 0X0e,     
+  WRITE, 2, 0x98, 0X0c,     
+  WRITE, 2, 0x99, 0X0a,     
+  WRITE, 2, 0xA0, 0X02,     
+  WRITE, 2, 0xA1, 0X1f,     
+  WRITE, 2, 0xA3, 0X00,     
+  WRITE, 2, 0xA4, 0X04,     
+  WRITE, 2, 0xA6, 0X1f,     
+  WRITE, 2, 0xA7, 0X1f,     
+  WRITE, 2, 0xA8, 0X12,     
+  WRITE, 2, 0xAA, 0X00,     
+  WRITE, 2, 0xAB, 0X00,  
+  WRITE, 2, 0xB0, 0X0A,  
+  WRITE, 2, 0xB1, 0X0C,  
+  WRITE, 2, 0xB2, 0X0E,  
+  WRITE, 2, 0xB3, 0X10,  
+  WRITE, 2, 0xBa, 0X04,  
+  WRITE, 2, 0xBb, 0X00,  
+  WRITE, 2, 0xBd, 0X1F,  
+  WRITE, 2, 0xBe, 0X02,  
+  WRITE, 2, 0xc0, 0X1f,     
+  WRITE, 2, 0xc1, 0X1f,     
+  WRITE, 2, 0xc2, 0X11,     
+  WRITE, 2, 0xc4, 0X00,     
+  WRITE, 2, 0xc5, 0X00,  
+  WRITE, 2, 0xC6, 0X09,  
+  WRITE, 2, 0xC7, 0X0B,  
+  WRITE, 2, 0xC8, 0X0D,  
+  WRITE, 2, 0xC9, 0X0F, 
+  WRITE, 2, 0xD0, 0X03,  
+  WRITE, 2, 0xD1, 0X00,  
+  WRITE, 2, 0xD3, 0X1F, 
+  WRITE, 2, 0xD4, 0X01, 
+  WRITE, 2, 0xd6, 0X1f,     
+  WRITE, 2, 0xd7, 0X1f,     
+  WRITE, 2, 0xd8, 0X12,     
+  WRITE, 2, 0xdA, 0X00,     
+  WRITE, 2, 0xdB, 0X00,  
+  
+  WRITE, 2, 0xFF, 0X30, //PAGE0
+  WRITE, 2, 0xFF, 0X52, 
+  WRITE, 2, 0xFF, 0X00, 
+
+  WRITE, 2, 0x3A, 0X50, //24BIT
+
+  WRITE, 2, 0x36, 0x09, //default: 0X0a, // 0x09 flipped vertically and horizontally, 0a: default
+  WRITE, 1, 0x11, 
+  DELAY, 120,                        
+  WRITE, 1, 0x29, 
+  DELAY, 20,                                    
+
+  END_LIST
+};  
+
+static const uint8_t st7701_type1_init_operations[] = {
+    WRITE, 6, 0xFF,
+      0x77, 0x01, 0x00, 0x00, 0x10,
+
+    WRITE, 3, 0xC0,
+       0x3B, 0x00,
+    WRITE, 3, 0xC1,
+      0x0D, 0x02,
+    WRITE, 3, 0xC2,
+      0x31, 0x05,
+    WRITE, 2, 0xCD, 0x08,
+
+    WRITE, 17, 0xB0, // Positive Voltage Gamma Control
+      0x00, 0x11, 0x18, 0x0E,
+      0x11, 0x06, 0x07, 0x08,
+      0x07, 0x22, 0x04, 0x12,
+      0x0F, 0xAA, 0x31, 0x18,
+
+    WRITE, 17, 0xB1, // Negative Voltage Gamma Control
+      0x00, 0x11, 0x19, 0x0E,
+      0x12, 0x07, 0x08, 0x08,
+      0x08, 0x22, 0x04, 0x11,
+      0x11, 0xA9, 0x32, 0x18,
+
+    // PAGE1
+    WRITE, 6, 0xFF,
+      0x77, 0x01, 0x00, 0x00, 0x11,
+
+    WRITE, 2, 0xB0, 0x60, // Vop=4.7375v
+    WRITE, 2, 0xB1, 0x32, // VCOM=32
+    WRITE, 2, 0xB2, 0x07, // VGH=15v
+    WRITE, 2, 0xB3, 0x80,
+    WRITE, 2, 0xB5, 0x49, // VGL=-10.17v
+    WRITE, 2, 0xB7, 0x85,
+    WRITE, 2, 0xB8, 0x21, // AVDD=6.6 & AVCL=-4.6
+    WRITE, 2, 0xC1, 0x78,
+    WRITE, 2, 0xC2, 0x78,
+
+    WRITE, 4, 0xE0,
+     0x00, 0x1B, 0x02,
+
+    WRITE, 12, 0xE1,
+      0x08, 0xA0, 0x00, 0x00,
+      0x07, 0xA0, 0x00, 0x00,
+      0x00, 0x44, 0x44,
+
+    WRITE, 13, 0xE2,
+      0x11, 0x11, 0x44, 0x44,
+      0xED, 0xA0, 0x00, 0x00,
+      0xEC, 0xA0, 0x00, 0x00,
+
+    WRITE, 5, 0xE3,
+      0x00, 0x00, 0x11, 0x11,
+
+    WRITE, 3, 0xE4,
+      0x44, 0x44,
+
+    WRITE, 17, 0xE5,
+      0x0A, 0xE9, 0xD8, 0xA0,
+      0x0C, 0xEB, 0xD8, 0xA0,
+      0x0E, 0xED, 0xD8, 0xA0,
+      0x10, 0xEF, 0xD8, 0xA0,
+
+    WRITE, 5, 0xE6,
+      0x00, 0x00, 0x11, 0x11,
+
+    WRITE, 3, 0xE7,
+      0x44, 0x44,
+
+    WRITE, 17, 0xE8,
+      0x09, 0xE8, 0xD8, 0xA0,
+      0x0B, 0xEA, 0xD8, 0xA0,
+      0x0D, 0xEC, 0xD8, 0xA0,
+      0x0F, 0xEE, 0xD8, 0xA0,
+
+    WRITE, 8, 0xEB,
+      0x02, 0x00, 0xE4, 0xE4,
+      0x88, 0x00, 0x40,
+
+    WRITE, 3, 0xEC,
+      0x3C, 0x00,
+
+    WRITE, 17, 0xED,
+      0xAB, 0x89, 0x76, 0x54,
+      0x02, 0xFF, 0xFF, 0xFF,
+      0xFF, 0xFF, 0xFF, 0x20,
+      0x45, 0x67, 0x98, 0xBA,
+
+    //-----------VAP & VAN---------------
+    WRITE, 6, 0xFF,
+      0x77, 0x01, 0x00, 0x00, 0x13,
+
+    WRITE, 2, 0xE5, 0xE4,
+
+    WRITE, 6, 0xFF,
+      0x77, 0x01, 0x00, 0x00, 0x00,
+
+    WRITE, 1, 0x21,   // 0x20 normal, 0x21 IPS
+    WRITE, 2, 0x3A, 0x60, // 0x70 RGB888, 0x60 RGB666, 0x50 RGB565
+
+    WRITE, 1, 0x11, // Sleep Out
+
+    DELAY, 120,
+
+    WRITE, 1, 0x29, // Display On
+
+    END_LIST
+  };
+
+#endif // LCD_IF_DPI

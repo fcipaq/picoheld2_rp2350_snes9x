@@ -1,0 +1,66 @@
+;
+; pplib - a library for the Pico Held handheld
+;
+; Copyright (C) 2023 Daniel Kammer (daniel.kammer@web.de)
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+;
+;
+
+.program snd_output
+
+.side_set 2
+
+public entry_point:
+
+.wrap_target
+; ------------------------------------------
+    set y, 13         side 0b00
+    nop               side 0b10
+chan_l:
+    nop               side 0b00
+    jmp y-- chan_l    side 0b10
+
+; ------------------------------------------
+    set y, 14         side 0b01
+    pull noblock      side 0b11  ; 1 pull (32 bits is enough for 2 cycles since it's mono audio only)
+chan_r:
+    out pins, 1       side 0b01
+    jmp y-- chan_r    side 0b11
+
+    out pins, 1       side 0b00
+    nop               side 0b10
+
+; ------------------------------------------
+    set y, 13         side 0b00
+    nop               side 0b10
+chan_l2:
+    nop               side 0b00
+    jmp y-- chan_l2   side 0b10
+
+; ------------------------------------------
+    set y, 14         side 0b01
+    nop               side 0b11
+chan_r2:
+    out pins, 1       side 0b01
+    jmp y-- chan_r2   side 0b11
+
+    out pins, 1       side 0b00
+    nop               side 0b10
+
+.wrap
+
+% c-sdk {
+
+%}

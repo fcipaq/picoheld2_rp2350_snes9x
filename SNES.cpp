@@ -1,0 +1,617 @@
+/*
+
+
+*/
+
+//#define MICROSD
+#define ROM_HEADER_FILE
+//#define EMULATION_ONLY
+
+#include <picoengine.h>
+
+//#include <Arduino.h>
+
+#ifdef MICROSD
+#include <SD.h>
+#endif
+
+//#include <cassert>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+#include <math.h>
+#include "pico/mutex.h"
+#include "pico/multicore.h"
+#include "pico/time.h"
+#include "hardware/vreg.h"
+
+#include "pico/stdlib.h"  // overclock
+#include "hardware/clocks.h"
+
+extern "C" {
+#include "sparkfun_pico/sfe_pico.h"
+}
+
+#ifndef EMULATION_ONLY
+#include "hwcfg.h"
+#include "controls.h"
+#endif
+
+extern "C" {
+#include "snes9x/snes9x.h"
+#include "snes9x/soundux.h"
+#include "snes9x/memmap.h"
+#include "snes9x/apu.h"
+#include "snes9x/display.h"
+#include "snes9x/cpuexec.h"
+#include "snes9x/srtc.h"
+#include "snes9x/save.h"
+#include "snes9x/gfx.h"
+}
+
+#define LCD_ENABLE
+#define AUDIO_ENABLE
+
+#ifdef LCD_ENABLE
+LCD_DPI lcd = LCD_DPI();
+#endif
+
+int brightness = 64;
+/* ---------- LCD END ------------*/
+
+mutex_t core1_go;
+
+#ifdef ROM_HEADER_FILE
+#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
+#endif
+
+//static bool apu_enabled = true;
+//static bool lowpass_filter = false;
+//static int frameskip = 4;
+
+// snes stuff
+bool overclock_cycles = false;
+int one_c = 4, slow_one_c = 5, two_c = 6;
+extern SGFX GFX;  // snes9x API
+char* savestate_name;// = "save.sav";  // short file name dos
+volatile int target_fps;
+
+// save state
+uint32_t just_saved_timer;
+int just_saved = 0;
+int sd_init = 0;
+
+// sound
+volatile int volume = 3;
+#define AUDIO_SAMPLE_RATE (32000)
+#define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
+int16_t audio_buf[2][AUDIO_SAMPLE_RATE / 50 * 2]; // stereo
+
+// --- MAIN
+static void update_keymap(int id)
+{
+}
+
+static bool screenshot_handler(const char *filename, int width, int height)
+{
+    //return rg_display_save_frame(filename, currentUpdate, width, height);
+    return true;
+}
+
+static bool save_state_handler(char *filename)
+{
+  char filename_local[ROM_NAME_LEN + 2];
+
+  filename_local[0] = '/';
+  memcpy(&filename_local[1], filename, ROM_NAME_LEN);
+  filename_local[ROM_NAME_LEN + 1] = 0;
+
+  bool ret = false;
+#if MICROSD
+  File savestate_file;
+
+  printf("Savestate handler called...\n\n");
+
+  if (!sd_init) {
+    if (!SD.begin(PIN_SD_CS, SPI, 10000000)) {
+      printf("Unable to init SD card\n");
+      goto bailout;
+    }
+
+    sd_init = 1;
+  }
+
+  if (SD.exists(filename)) {
+    if (!SD.remove(filename)) {
+      printf("Unable to delete game state file\n");
+      goto bailout;
+    }
+  }
+
+  savestate_file = SD.open(filename_local, FILE_WRITE);
+
+  if (!savestate_file) {
+    printf("Unable to open save state file for writing.\n\n");
+    goto bailout;
+  }
+
+  savestate_file.write((uint8_t*) &CPU, sizeof(CPU));
+  savestate_file.write((uint8_t*) &ICPU, sizeof(ICPU));
+  savestate_file.write((uint8_t*) &PPU, sizeof(PPU));
+  savestate_file.write((uint8_t*) &DMA, sizeof(DMA));
+  savestate_file.write((uint8_t*) Memory.VRAM, VRAM_SIZE);
+  savestate_file.write((uint8_t*) Memory.RAM, RAM_SIZE);
+  savestate_file.write((uint8_t*) Memory.SRAM, SRAM_SIZE);
+  savestate_file.write((uint8_t*) Memory.FillRAM, FILLRAM_SIZE);
+  savestate_file.write((uint8_t*) &APU, sizeof(APU));
+  savestate_file.write((uint8_t*) &IAPU, sizeof(IAPU));
+  savestate_file.write((uint8_t*) IAPU.RAM, 0x10000);
+  savestate_file.write((uint8_t*) &SoundData, sizeof(SoundData));
+
+  savestate_file.close();
+
+  printf("Game state saved.\n\n");
+
+  ret = true;
+  
+  bailout:
+  
+  if (ret)
+    just_saved = 1;
+  else
+    just_saved = 2;
+
+  just_saved_timer = millis();
+#endif
+
+  return ret;
+}
+
+static bool load_state_handler(char *filename)
+{
+  char filename_local[ROM_NAME_LEN + 2];
+
+  filename_local[0] = '/';
+  memcpy(&filename_local[1], filename, ROM_NAME_LEN);
+  filename_local[ROM_NAME_LEN + 1] = 0;
+
+  printf("Loadstate handler called...\n\n");
+
+#if MICROSD
+  if (!sd_init) {
+    if (!SD.begin(PIN_SD_CS, SPI, 10000000)) {
+      printf("Unable to init SD card\n\n");
+      just_saved_timer = millis();
+      just_saved = 2;
+      return false;
+    }
+
+    sd_init = 1;
+  }
+
+  File readstate_file = SD.open(filename_local, FILE_READ);
+
+  if (!readstate_file) {
+    printf("Failed to load game state:\n");
+    printf("*\n");
+    printf(filename_local);
+    printf("*\n");
+    just_saved_timer = millis();
+    just_saved = 2;
+    return false;
+  }
+
+  S9xReset();
+
+  // At this point we can't go back and a failure will corrupt the state anyway
+  printf("Now reading to memory.\n");
+
+  readstate_file.read((uint8_t*) &CPU, sizeof(CPU));
+  readstate_file.read((uint8_t*) &ICPU, sizeof(ICPU));
+  readstate_file.read((uint8_t*) &PPU, sizeof(PPU));
+  readstate_file.read((uint8_t*) &DMA, sizeof(DMA));
+  readstate_file.read((uint8_t*) Memory.VRAM, VRAM_SIZE);
+  readstate_file.read((uint8_t*) Memory.RAM, RAM_SIZE);
+  readstate_file.read((uint8_t*) Memory.SRAM, SRAM_SIZE);
+  readstate_file.read((uint8_t*) Memory.FillRAM, FILLRAM_SIZE);
+  readstate_file.read((uint8_t*) &APU, sizeof(APU));
+  readstate_file.read((uint8_t*) &IAPU, sizeof(IAPU));
+  readstate_file.read((uint8_t*) IAPU.RAM, 0x10000);
+  readstate_file.read((uint8_t*) &SoundData, sizeof(SoundData));
+  
+  readstate_file.close();
+
+  printf("Game state loaded.\n");
+
+  return S9xLoadState();<
+#else
+  return false;
+#endif
+}
+
+uint32_t timer_str_ld = 0;
+int str_ld_debounce = 0;
+
+void check_load_save(void) {
+#if 0
+  if ( (buts & BUTTON_1) &&
+       (buts & BUTTON_2) && 
+       (buts & BUTTON_3)) {
+    if ((str_ld_debounce == 1) ) {
+      if ((millis() - timer_str_ld) > 500) {
+        if (dpad & DPAD_UP)
+          save_state_handler(savestate_name);
+        if (dpad & DPAD_DOWN)
+          load_state_handler(savestate_name);
+        if (dpad & DPAD_RIGHT) {
+          brightness *= 2;
+          if (brightness > 1024)
+            brightness = 1024;
+          set_brightness(brightness - 1);
+        }
+        if (dpad & DPAD_LEFT) {
+          brightness /= 2;
+          if (brightness < 16)
+            brightness = 16;
+          set_brightness(brightness - 1);
+        }
+        str_ld_debounce = 0;
+      }
+      // undo all buttons to not interfere with the game
+      buts = 0;
+      dpad = 0;
+    } else {
+      timer_str_ld = millis();
+      str_ld_debounce = 1;
+    }
+  } else {
+    str_ld_debounce = 0;
+  }
+#endif
+}
+
+static bool reset_handler(bool hard)
+{
+    S9xReset();
+    return true;
+}
+
+uint Pitch = SNES_WIDTH * 2;
+uint ZPitch = SNES_WIDTH;
+uint8_t ZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
+uint8_t SubZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
+#ifndef LCD_ENABLE
+uint8_t Screen[SNES_WIDTH * SNES_HEIGHT_EXTENDED * 2];
+#endif
+
+bool S9xInitDisplay(void)
+{
+#ifdef LCD_ENABLE
+    gbuffer_t fb_back;
+    lcd.get_backbuffer(&fb_back);
+    GFX.Screen = (uint8_t*) fb_back.data;
+#else
+    GFX.Screen = (uint8_t*) Screen;
+#endif
+
+    GFX.Pitch = Pitch;
+    GFX.ZPitch = ZPitch;
+
+    GFX.SubScreen = GFX.Screen; //(uint8_t*) sfe_mem_malloc(GFX.Pitch * SNES_HEIGHT_EXTENDED);
+    GFX.ZBuffer = ZBuffer; //(uint8_t*) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);
+
+    GFX.SubZBuffer = SubZBuffer; // 56 kB
+    //GFX.SubZBuffer = (uint8_t *) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);  // 56 kB
+    
+    return GFX.Screen && GFX.SubScreen && GFX.ZBuffer && GFX.SubZBuffer;
+}
+
+void S9xDeinitDisplay(void)
+{
+}
+
+uint32_t S9xReadJoypad(int32_t port)
+{
+    if (port != 0)
+        return 0;
+
+    uint32_t joypad = 0;
+
+#ifndef EMULATION_ONLY
+   if (ctrl_is_pressed(BUTTON_LEFT)) joypad |= SNES_LEFT_MASK;
+   if (ctrl_is_pressed(BUTTON_RIGHT)) joypad |= SNES_RIGHT_MASK;
+   if (ctrl_is_pressed(BUTTON_UP)) joypad |= SNES_UP_MASK;
+   if (ctrl_is_pressed(BUTTON_DOWN)) joypad |= SNES_DOWN_MASK;
+  
+  if (ctrl_is_pressed(BUTTON_ST)) joypad |= SNES_START_MASK;
+  if (ctrl_is_pressed(BUTTON_SEL)) joypad |= SNES_SELECT_MASK;
+  
+  if (ctrl_is_pressed(BUTTON_A)) joypad |= SNES_A_MASK;
+  if (ctrl_is_pressed(BUTTON_B)) joypad |= SNES_B_MASK;
+  if (ctrl_is_pressed(BUTTON_X)) joypad |= SNES_X_MASK;
+  if (ctrl_is_pressed(BUTTON_Y)) joypad |= SNES_X_MASK;
+
+  if (ctrl_is_pressed(BUTTON_R)) joypad |= SNES_TR_MASK;
+  if (ctrl_is_pressed(BUTTON_L)) joypad |= SNES_TL_MASK;
+#endif
+  return joypad;
+}
+
+bool S9xReadMousePosition(int32_t which1, int32_t *x, int32_t *y, uint32_t *buttons)
+{
+    return false;
+}
+
+bool S9xReadSuperScopePosition(int32_t *x, int32_t *y, uint32_t *buttons)
+{
+    return false;
+}
+
+bool JustifierOffscreen(void)
+{
+    return true;
+}
+
+void JustifierButtons(uint32_t *justifiers)
+{
+    (void)justifiers;
+}
+
+void emu_panic(char* str)
+{
+  while(1) {
+    printf(str);
+    sleep_ms(1000);
+  }
+}
+
+void core1task() {
+#ifdef AUDIO_ENABLE
+  int ret = snd_init();
+  if (ret != SND_SUCCESS)
+    emu_panic("error init sound\n");
+  snd_set_freq(AUDIO_SAMPLE_RATE);
+  snd_set_vol(1);
+  snd_unmute();
+
+  int cur_audio_buf = 0;
+
+  int buffer_length = AUDIO_SAMPLE_RATE / target_fps;
+
+  sbuffer_t snd_buf = {
+    .bitdepth = 16,
+    .len = buffer_length,
+  };
+
+  while (1) {
+    //while (!mutex_try_enter(&core1_go, NULL))
+    //  tight_loop_contents();
+
+    cur_audio_buf = cur_audio_buf == 0;
+    S9xMixSamples(audio_buf[cur_audio_buf], buffer_length * 2);
+
+    for (int i = 0; i < buffer_length; i++)
+      audio_buf[cur_audio_buf][i] = audio_buf[cur_audio_buf][i * 2] / volume;
+    
+#if 1
+    snd_dma_send_buffer(audio_buf[cur_audio_buf], buffer_length);
+#else
+    snd_buf.data = (void*) audio_buf[cur_audio_buf];
+    snd_enque_buf(snd_buf, SND_CHAN_0, SND_BLOCKING);
+#endif
+  }
+#endif
+}
+
+uint32_t millis() {
+  return to_ms_since_boot(get_absolute_time());
+}
+
+uint32_t micros() {
+  return to_us_since_boot(get_absolute_time());
+}
+
+void setup(void) {
+  int ret;
+
+  #if 1
+  vreg_set_voltage(VREG_VOLTAGE_1_20);
+  sleep_ms(10);
+  uint32_t sys_clock_khz = 280000;
+  set_sys_clock_khz(sys_clock_khz, true);
+  #endif
+ 
+  stdio_init_all();
+  
+  if (!sfe_pico_alloc_init(PIN_PSRAM_CS)) {
+    emu_panic("sfe error\n");
+  } else
+  printf("sfe init complete\n");
+
+  printf("online\n");
+
+  pe_config_t pe_cfg = {
+    .lcd_num_fb = 2,
+    .lcd_refresh_mode = LCD_FRR_REFRESH,
+    .lcd_scale = 3,
+  };
+
+  if (pe_init(pe_cfg) != PE_SUCCESS)
+    emu_panic("picoengine error\n");
+
+  sleep_ms(5);  // 750 us required. TODO: investigate why
+
+#ifdef LCD_ENABLE  
+  ret = lcd.init(pe_cfg.lcd_num_fb, pe_cfg.lcd_refresh_mode, pe_cfg.lcd_scale);
+  if (ret != LCD_SUCCESS)
+    emu_panic("lcd error\n");
+
+  printf("lcd init complete.\n");
+
+  lcd_backlight_init();
+  lcd_backlight_set(50);
+#endif
+#ifdef MICROSD
+  printf("Initializing SPI...\n");
+  SPI.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, -1);
+#endif
+
+
+}
+
+int main(void)
+{
+  setup();
+
+  Settings.CyclesPercentage = 100;
+  Settings.H_Max = SNES_CYCLES_PER_SCANLINE;
+  Settings.FrameTimePAL = 20000;
+  Settings.FrameTimeNTSC = 16667;
+  Settings.ControllerOption = SNES_JOYPAD;
+  Settings.HBlankStart = (256 * Settings.H_Max) / SNES_HCOUNTER_MAX;
+  Settings.SoundPlaybackRate = AUDIO_SAMPLE_RATE;
+  Settings.DisableSoundEcho = false;
+  Settings.InterpolatedSound = true;
+#ifdef USE_BLARGG_APU
+  Settings.SoundInputRate = AUDIO_SAMPLE_RATE;
+#endif
+
+    if (!S9xInitMemory())
+        emu_panic("Memory init failed!\n");
+
+    if (!S9xInitDisplay())
+        emu_panic("Display init failed!\n");
+
+    if (!S9xInitAPU())
+        emu_panic("APU init failed!\n");
+
+    if (!S9xInitSound(0, 0))
+        emu_panic("Sound init failed!\n");
+
+    if (!S9xInitGFX())
+        emu_panic("Graphics init failed!\n");
+
+#ifdef ROM_HEADER_FILE
+    Memory.ROM = (uint8_t*) ROM_DATA;
+    Memory.ROM_Size = ROM_SIZE;
+#else
+      Memory.ROM_Size = 0x400000;  // Donkey Kong Country
+      //Memory.ROM_Size = 0x300000;  // Lion King
+      //Memory.ROM_Size = 2621440;  // All Stars + Super Mario World
+#endif
+
+    if (!LoadROM(NULL))
+        emu_panic("ROM loading failed!\n");
+ 
+  target_fps = Memory.ROMFramesPerSecond;
+  int frame_time = 1000000 / target_fps;
+
+  savestate_name = (char*) Memory.ROMName;
+  load_state_handler(savestate_name);  // try and load a saved state
+
+#ifdef USE_BLARGG_APU
+    S9xSetSamplesAvailableCallback(S9xAudioCallback);
+#else
+    S9xSetPlaybackRate(Settings.SoundPlaybackRate);
+#endif
+
+    bool menuCancelled = false;
+    bool menuPressed = false;
+    int frames = 0;
+
+    int32_t framedrop_balance = 0;
+    uint32_t startTime;
+
+    int frame_no = 0;
+    unsigned long fps_timer = millis();
+
+    uint32_t btn_timer = millis();
+    int dropped_frames = 0;
+
+    printf("Starting emulation.\n");
+
+#ifdef AUDIO_ENABLE
+  mutex_init(&core1_go);
+  mutex_try_enter(&core1_go, NULL);
+  multicore_reset_core1();
+  multicore_launch_core1(core1task);
+#endif
+
+    while (1)
+    {
+      //check_load_save();
+      
+      if (millis() - btn_timer > 100) {
+        ctrl_button_state_update();
+        btn_timer = millis();
+      }
+
+      startTime = micros();
+
+      if (IPPU.RenderThisFrame == false)
+        dropped_frames++;
+
+      S9xMainLoop();
+
+#ifdef AUDIO_ENABLE
+      mutex_exit(&core1_go);
+#endif
+
+      /* ---------- LCD ------------*/
+    if (IPPU.RenderThisFrame) {
+      if (just_saved) {
+        uint16_t* scr = (uint16_t*) GFX.Screen;
+        uint16_t col = just_saved == 1 ? 0b0000011111100000 : 0b1111100000000000;
+        for (int x = 230; x < 240; x++)
+          for (int y = 12; y < 22; y++) {
+            scr[x + y * SNES_WIDTH] = col;
+          }
+        if (millis() - just_saved_timer > 2000)
+          just_saved = 0;
+      }
+
+#ifdef LCD_ENABLE
+      lcd.request_pageflip();
+#endif
+      IPPU.RenderThisFrame = false;
+    } else {
+#ifdef LCD_ENABLE  
+      gbuffer_t fb_back;
+      lcd.get_backbuffer(&fb_back);
+      GFX.Screen = (uint8_t*) fb_back.data;
+      GFX.SubScreen = GFX.Screen;
+#endif
+      if (ctrl_is_pressed(BUTTON_SEL))
+        pwr_shutdown();
+
+      IPPU.RenderThisFrame = true;
+    }
+
+      /* ---------- LCD END------------*/
+      framedrop_balance += (micros() - startTime) - frame_time;
+
+      if (framedrop_balance > frame_time) {  // fcipaq: TODO: what amount is best?
+        IPPU.RenderThisFrame = false;
+      }
+  
+      if (framedrop_balance < -550)   // Allow some jitter
+      {
+        int32_t fpsLimiter = micros();
+        while (micros() - fpsLimiter < (-framedrop_balance))
+          ;
+        framedrop_balance = 0;
+      }
+
+      frame_no++;
+      if (millis() - fps_timer > 1000) {
+        printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, Memory.ROMFramesPerSecond);
+        dropped_frames = 0;
+        frame_no = 0;
+        fps_timer = millis();
+      }
+
+  }
+}

@@ -1,0 +1,37 @@
+;
+; pplib - a library for the Pico Held handheld
+;
+; Copyright (C) 2023 Daniel Kammer (daniel.kammer@web.de)
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+;
+;
+
+; SPI mode 0 data transmission to LCD
+
+.program lcd_output
+
+.side_set 1 opt
+
+    .wrap_target
+label_tx:
+    out pins, 1           side 0   ; Stall here on empty (keep SCK deasserted)
+    jmp label_tx          side 1   ; repeat, WR set to HIGH
+public tx_uint8:
+    out null, 8                    ; discard hi byte
+    .wrap
+
+% c-sdk {
+
+%}

@@ -1,0 +1,74 @@
+; Pico Engine - a library for the Pico Held 2 handheld
+;
+; Copyright (C) 2023 - 2025 Daniel Kammer (daniel.kammer@web.de)
+;
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+;
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+;
+
+.define PCLK_SCND 1     ; 1 = inverted polarity PCLK state on 1st half of the cycle (1 = data on falling edge, 0 = data on rising edge)
+.define PCLK_FRST 0     ; 0 = inverted polarty, PCLK state on 2nd half of the cycle (0 = data on falling edge, 1 = data on rising edge)
+.define DE_IDLE 0       ; 1 = inverted polarity
+.define DE_ACTIVE 1     ; 0 = inverted polarity
+
+.define visible_pixels 0
+.define hsync_pixels   1
+.define vsync_pixels   2
+
+.program lcd_scanout_2x
+
+.side_set 1 opt
+
+.fifo txget
+
+.wrap_target
+ next_line:
+    mov osr, rxfifo[visible_pixels]   side PCLK_FRST             ; load no of visible pixels
+	out x, 16                         side PCLK_SCND
+
+	scanout:
+	out pins, 16                      side PCLK_FRST
+    nop
+    set pins, DE_ACTIVE               side PCLK_SCND            ; relocated to inside the loop to save 1 instruction (replaces one NOP)
+    nop
+    nop                               side PCLK_FRST
+    nop
+    jmp x-- scanout                   side PCLK_SCND
+
+    set pins, DE_IDLE                 side PCLK_FRST
+
+    ;hsync
+    mov osr, rxfifo[hsync_pixels]     side PCLK_FRST             ; load no of hsync pixels
+	mov x, osr                        side PCLK_SCND
+
+    hblanking:
+    out null, 8                       side PCLK_FRST
+    jmp x-- hblanking                 side PCLK_SCND
+
+    jmp next_line                     side PCLK_SCND
+
+public vsync:
+
+    ;vsync
+	mov osr, rxfifo[vsync_pixels]     side PCLK_FRST              ; load no of visible lines to line counter
+	mov x, osr                        side PCLK_SCND
+
+    vblanking:
+    nop                               side PCLK_SCND
+    jmp x-- vblanking                 side PCLK_FRST
+.wrap
+
+
+% c-sdk {
+
+%}
