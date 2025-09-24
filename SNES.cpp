@@ -63,8 +63,8 @@ int brightness = 64;
 mutex_t core1_go;
 
 #ifdef ROM_HEADER_FILE
-#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
-//#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
+#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
 #endif
 
@@ -420,7 +420,7 @@ void setup(void) {
   #if 1
   vreg_set_voltage(VREG_VOLTAGE_1_20);
   sleep_ms(10);
-  uint32_t sys_clock_khz = 280000;
+  uint32_t sys_clock_khz = 300000;
   set_sys_clock_khz(sys_clock_khz, true);
   #endif
  
@@ -544,10 +544,7 @@ int main(void)
     {
       //check_load_save();
       
-      if (millis() - btn_timer > 100) {
-        ctrl_button_state_update();
-        btn_timer = millis();
-      }
+      ctrl_button_state_update();
 
       startTime = micros();
 
