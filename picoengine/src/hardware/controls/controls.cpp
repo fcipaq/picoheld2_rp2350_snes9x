@@ -83,7 +83,7 @@ keymap_t keymap[NUM_BTNS] = {
 int analog_read(int gpio_num) {
   adc_select_input(gpio_num - ADC_PIN_OFFSET);
   int read_val = adc_read();
-  printf("GPIO %d is at %d\n", gpio_num, read_val);
+  //printf("GPIO %d is at %d\n", gpio_num, read_val);
   return (read_val); // 10 bit res
 }
 

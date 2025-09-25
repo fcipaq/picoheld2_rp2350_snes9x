@@ -64,8 +64,8 @@ mutex_t core1_go;
 
 #ifdef ROM_HEADER_FILE
 //#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
-#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
-//#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
+#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
 #endif
 
 //static bool apu_enabled = true;
@@ -85,7 +85,7 @@ int just_saved = 0;
 int sd_init = 0;
 
 // sound
-volatile int volume = 3;
+volatile int volume = 1;
 #define AUDIO_SAMPLE_RATE (32000)
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
 int16_t audio_buf[2][AUDIO_SAMPLE_RATE / 50 * 2]; // stereo
@@ -545,6 +545,8 @@ int main(void)
       //check_load_save();
       
       ctrl_button_state_update();
+      if (ctrl_is_pressed(BUTTON_SEL))
+        pwr_shutdown();
 
       startTime = micros();
 
@@ -572,25 +574,22 @@ int main(void)
 
 #ifdef LCD_ENABLE
       lcd.request_pageflip();
-#endif
-      IPPU.RenderThisFrame = false;
-    } else {
-#ifdef LCD_ENABLE  
       gbuffer_t fb_back;
       lcd.get_backbuffer(&fb_back);
       GFX.Screen = (uint8_t*) fb_back.data;
       GFX.SubScreen = GFX.Screen;
 #endif
-      if (ctrl_is_pressed(BUTTON_SEL))
-        pwr_shutdown();
-
-      IPPU.RenderThisFrame = true;
+      //IPPU.RenderThisFrame = false;
+    } else {
+      //IPPU.RenderThisFrame = true;
     }
 
       /* ---------- LCD END------------*/
+      IPPU.RenderThisFrame = true;
+
       framedrop_balance += (micros() - startTime) - frame_time;
 
-      if (framedrop_balance > frame_time) {  // fcipaq: TODO: what amount is best?
+      if (framedrop_balance > frame_time / 2) {  // fcipaq: TODO: what amount is best?
         IPPU.RenderThisFrame = false;
       }
   
