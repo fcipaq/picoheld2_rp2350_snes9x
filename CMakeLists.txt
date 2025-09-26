@@ -67,6 +67,7 @@ target_link_libraries(SNES
         hardware_spi
         hardware_dma
         hardware_pio
+        hardware_flash
         hardware_interp
         hardware_clocks
         )

@@ -1,3 +1,5 @@
+// MANUAL FD
+
 /*
 
 
@@ -85,7 +87,7 @@ int just_saved = 0;
 int sd_init = 0;
 
 // sound
-volatile int volume = 1;
+volatile int volume = 5;
 #define AUDIO_SAMPLE_RATE (32000)
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
 int16_t audio_buf[2][AUDIO_SAMPLE_RATE / 50 * 2]; // stereo
@@ -506,7 +508,7 @@ int main(void)
     if (!LoadROM(NULL))
         emu_panic("ROM loading failed!\n");
  
-  target_fps = Memory.ROMFramesPerSecond;
+  target_fps = 50;//Memory.ROMFramesPerSecond;
   int frame_time = 1000000 / target_fps;
 
   savestate_name = (char*) Memory.ROMName;
@@ -518,18 +520,17 @@ int main(void)
     S9xSetPlaybackRate(Settings.SoundPlaybackRate);
 #endif
 
-    bool menuCancelled = false;
-    bool menuPressed = false;
-    int frames = 0;
-
-    int32_t framedrop_balance = 0;
+    // speed control
     uint32_t startTime;
 
+    int32_t framedrop_balance = 0;
     int frame_no = 0;
+    int dropped_frames = 0;
+    int manual_framedrop = 0;  // between two drawn frames there be skipped manual_framedrop frames
+    int manual_framedrop_cnt = 0;
+
     unsigned long fps_timer = millis();
 
-    uint32_t btn_timer = millis();
-    int dropped_frames = 0;
 
     printf("Starting emulation.\n");
 
@@ -548,10 +549,26 @@ int main(void)
       if (ctrl_is_pressed(BUTTON_SEL))
         pwr_shutdown();
 
+      if (ctrl_is_pressed(BUTTON_L)) {
+        manual_framedrop = 1;
+        manual_framedrop_cnt = 0;
+      }
+
+      if (ctrl_is_pressed(BUTTON_R)) {
+        manual_framedrop = 0;
+      }
+
       startTime = micros();
 
       if (IPPU.RenderThisFrame == false)
         dropped_frames++;
+
+      if (IPPU.RenderThisFrame) {
+        gbuffer_t fb_back;
+        lcd.get_backbuffer(&fb_back);
+        GFX.Screen = (uint8_t*) fb_back.data;
+        GFX.SubScreen = GFX.Screen;
+      }
 
       S9xMainLoop();
 
@@ -571,21 +588,31 @@ int main(void)
         if (millis() - just_saved_timer > 2000)
           just_saved = 0;
       }
-
-#ifdef LCD_ENABLE
-      lcd.request_pageflip();
-      gbuffer_t fb_back;
-      lcd.get_backbuffer(&fb_back);
-      GFX.Screen = (uint8_t*) fb_back.data;
-      GFX.SubScreen = GFX.Screen;
-#endif
       //IPPU.RenderThisFrame = false;
     } else {
       //IPPU.RenderThisFrame = true;
     }
 
+#ifdef LCD_ENABLE
+    if (IPPU.RenderThisFrame == true) {
+      lcd.request_pageflip();
+      lcd.refresh();
+    } else {
+      //lcd.refresh();
+    }
+#endif
+
       /* ---------- LCD END------------*/
       IPPU.RenderThisFrame = true;
+      
+      if (manual_framedrop) {
+        if (manual_framedrop_cnt == manual_framedrop) {
+          manual_framedrop_cnt = 0;
+        } else {
+          manual_framedrop_cnt++;
+          IPPU.RenderThisFrame = false;
+        }
+      }
 
       framedrop_balance += (micros() - startTime) - frame_time;
 
