@@ -86,7 +86,7 @@ class LCD_DPI : public LCD
     //mutex_t mut_update_fb;
 
     // frame buffers
-    color_t m_fb[2][256 /* SNES_WIDTH */ * (224 + 2) /* SNES_HEIGHT*/] __attribute__((aligned(4)));
+    color_t m_fb[2][256 /* SNES_WIDTH */ * (224 + 1) /* SNES_HEIGHT + 1 black line*/] __attribute__((aligned(4)));
     //color_t m_black_line[256 /* SNES_WIDTH */] __attribute__((aligned(4)));
 
     // rotation LUT

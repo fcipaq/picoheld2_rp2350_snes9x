@@ -10,6 +10,7 @@
 //#define EMULATION_ONLY
 
 #include <picoengine.h>
+#include <fonts/fontfiles/f13x16.h>
 
 //#include <Arduino.h>
 
@@ -65,9 +66,9 @@ int brightness = 64;
 mutex_t core1_go;
 
 #ifdef ROM_HEADER_FILE
-//#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
+#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
-#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
 #endif
 
 //static bool apu_enabled = true;
@@ -528,9 +529,10 @@ int main(void)
     int dropped_frames = 0;
     int manual_framedrop = 0;  // between two drawn frames there be skipped manual_framedrop frames
     int manual_framedrop_cnt = 0;
-
+    int fps;
     unsigned long fps_timer = millis();
 
+    gbuffer_t fb_back;
 
     printf("Starting emulation.\n");
 
@@ -564,13 +566,18 @@ int main(void)
         dropped_frames++;
 
       if (IPPU.RenderThisFrame) {
-        gbuffer_t fb_back;
         lcd.get_backbuffer(&fb_back);
         GFX.Screen = (uint8_t*) fb_back.data;
         GFX.SubScreen = GFX.Screen;
       }
 
       S9xMainLoop();
+
+      char debug_print[11];
+      itoa(fps, debug_print, 10);
+      font_write_string(11, 11, 0x0, debug_print, (font_t*) font_13x16, fb_back);
+      font_write_string(10, 10, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+
 
 #ifdef AUDIO_ENABLE
       mutex_exit(&core1_go);
@@ -630,6 +637,7 @@ int main(void)
 
       frame_no++;
       if (millis() - fps_timer > 1000) {
+        fps = frame_no * 1000 / (millis() - fps_timer);
         printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, Memory.ROMFramesPerSecond);
         dropped_frames = 0;
         frame_no = 0;

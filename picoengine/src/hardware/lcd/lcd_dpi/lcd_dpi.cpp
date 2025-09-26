@@ -659,7 +659,7 @@ void LCD_DPI::build_fb_rot_lut() {
   // TODO: Investigate. Working theory for the lost words is: During vblanking the scanout SM cannot accept any incoming data.
   // However, DMA0 keeps firing data at DMA1 as long as the PIO's DREQ will ask for it. With the SM's FIFO not getting
   // emptied. In consequence, some data might still be in flight from DMA0 to DMA1 to the FIFO while the FIFO is already full
-  int offset_x = +3;
+  int offset_x = +3 + 8;  // 8 = (240 - SNES_HEIGHT) / 2
   int offset_y = 8;
  
   //+ (LCD_PHYS_RES_X / m_lcd_scale - 224 /* SNES_EXTENDED_HEIGHT*/) / 2
@@ -668,16 +668,14 @@ void LCD_DPI::build_fb_rot_lut() {
   for (int h = m_num_fb - 1; h >= 0; h--) {
     // clear RLUT
     for (int i = 0; i < (1u << m_dma_ring_buffer_size); i++)
-      m_fb_rlut[i] = (uint32_t) &m_fb[h][256 /* SNES_WIDTH */ - 1];  
+      m_fb_rlut[i] = (uint32_t) &m_fb[h][225 * 256 /* SNES_WIDTH */ - 1]; // default to black
       //m_fb_rlut[i] = (uint32_t) &m_fb[h][LCD_PHYS_RES_Y / m_lcd_scale - 1];  
 
     // setup pixel addresses
     for (int i = 0; i < LCD_PHYS_RES_X / m_lcd_scale; i++) {
       uint16_t index = (i + ofs) % (1u << m_dma_ring_buffer_size);
-      if (index < 224 /* SNES_HEIGHT */)    
+      if ((index >= (offset_x + 1)) && (index < (offset_x - 1 + 224)))  // visible 224 pixels of the snes
         m_fb_rlut[index] = (uint32_t) &m_fb[h][(i + 1) * 256 /* SNES_WIDTH */ - offset_y - 1];
-      else
-        m_fb_rlut[index] = (uint32_t) &m_fb[h][225 * 256 /* SNES_WIDTH */ - offset_y - 1];
     }
 
     // repeat m_lcd_scale times
@@ -853,8 +851,8 @@ lcd_error_t LCD_DPI::get_backbuffer(gbuffer_t* lcd_buffer) {
       }
 
     lcd_buffer->bitdepth = LCD_COLORDEPTH;
-    lcd_buffer->width = m_screen_width;
-    lcd_buffer->height = m_screen_height;
+    lcd_buffer->width = 256; //m_screen_width;
+    lcd_buffer->height = 224; //m_screen_height;
     lcd_buffer->data = m_fb[res];
 
     return LCD_SUCCESS;
