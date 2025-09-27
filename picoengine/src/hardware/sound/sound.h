@@ -25,22 +25,6 @@
 #include <typedefs.h>
 
 /* ========================= definitions ========================= */
-// buffer parameters
-#define SND_NUM_BUFS         (3) 
-#define SND_BUF_SIZE       (512)
-
-// channel definitions
-#define SND_NUM_CHAN          (4)
-#define SND_CHAN_ALL        (255)
-#define SND_CHAN_0            (0)
-#define SND_CHAN_1            (1)
-#define SND_CHAN_2            (2)
-#define SND_CHAN_3            (3)
-
-// function parameters
-#define SND_NONBLOCKING       (0)
-#define SND_BLOCKING          (1)
-
 // error messages
 #define SND_SUCCESS           (0)
 #define SND_CHAN_INVALID     (-1)
@@ -55,20 +39,13 @@
 bool snd_init();
 
 // channel control
-int  snd_enque_buf(sbuffer_t snd_buffer, uint8_t num_snd_channel, bool blocking);
-int  snd_num_bufs_free(uint8_t num_snd_channel);
-int  snd_num_bufs_waiting(uint8_t num_snd_channel);
-int  snd_cancel_channel(uint8_t num_snd_channel);
+void snd_enqueue_buffer_blocking(int16_t* snd_buffer, int len);
 
 // output control
 int  snd_set_freq(uint32_t freq);
-void snd_set_vol(int8_t vol);
 
 // (un)muting
 void snd_mute();
 void snd_unmute();  
-
-// debug
-void snd_dma_send_buffer(int16_t* buffer, int length);
 
 #endif //SOUND_H

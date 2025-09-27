@@ -660,7 +660,7 @@ void LCD_DPI::build_fb_rot_lut() {
   // However, DMA0 keeps firing data at DMA1 as long as the PIO's DREQ will ask for it. With the SM's FIFO not getting
   // emptied. In consequence, some data might still be in flight from DMA0 to DMA1 to the FIFO while the FIFO is already full
   int offset_x = +3 + 8;  // 8 = (240 - SNES_HEIGHT) / 2
-  int offset_y = 8;
+  int offset_y = 8;  // 8 = (SNES_WIDTH - 240) / 2
  
   //+ (LCD_PHYS_RES_X / m_lcd_scale - 224 /* SNES_EXTENDED_HEIGHT*/) / 2
 
@@ -674,7 +674,7 @@ void LCD_DPI::build_fb_rot_lut() {
     // setup pixel addresses
     for (int i = 0; i < LCD_PHYS_RES_X / m_lcd_scale; i++) {
       uint16_t index = (i + ofs) % (1u << m_dma_ring_buffer_size);
-      if ((index >= (offset_x + 1)) && (index < (offset_x - 1 + 224)))  // visible 224 pixels of the snes
+      if ((index >= (offset_x + 0)) && (index < (offset_x + 224)))  // visible 224 pixels of the snes
         m_fb_rlut[index] = (uint32_t) &m_fb[h][(i + 1) * 256 /* SNES_WIDTH */ - offset_y - 1];
     }
 

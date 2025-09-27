@@ -31,19 +31,21 @@
 #include "hardware/dma.h"
 #include "hardware/clocks.h"
 #include "pico/sem.h"
+#include "pico/mutex.h"
 
 #include "snd_pio.pio.h"
 
 /* ========================= definitions ========================= */
-#define SND_ALLOW_DIRECT
 
 /* ============================= variables ===========================*/
 /* ----------------------------- control -----------------------------*/
 uint8_t snd_init_complete = 0;
 bool snd_pio_complete = false;
 
-/* ----------------------------- Postprocess -----------------------------*/
-uint8_t snd_level = 1;
+mutex_t snd_ready;
+volatile int16_t* snd_next_buffer = NULL;
+volatile int snd_next_buffer_len = 0;
+int preload_buffer;
 
 /* ----------------------------- PIO -----------------------------*/
 PIO snd_pio = pio1;
@@ -58,195 +60,9 @@ dma_channel_config snd_dma_config;
 
 uint8_t snd_dma_enabled = 0;
 
-/* --------------------------- sound tx ---------------------------*/
-struct snd_channel_t {
-  void* snd_data[SND_NUM_BUFS];
-  uint8_t snd_bitdepth[SND_NUM_BUFS];
-  uint32_t snd_data_len[SND_NUM_BUFS];
-  uint32_t snd_data_pos[SND_NUM_BUFS];
-  volatile uint8_t num_cur_snd_data;
-  volatile uint8_t num_nxt_snd_data;
-  semaphore_t num_free_bufs;
-};
-
-struct snd_channel_t snd_channel[SND_NUM_CHAN];
-
-uint32_t snd_buf_size = SND_BUF_SIZE;
-
-// local DMA buffer
-volatile uint8_t num_cur_snd_buf;
-int16_t snd_buf[2][SND_BUF_SIZE];  
-
-volatile uint32_t snd_buf_pos[2];
-
 volatile uint8_t snd_playing = false;
 
 /* ============================= implementation ===========================*/
-
-// Set volume level.
-// 0 is most quiet and 5 is loudest.
-void snd_set_vol(int8_t vol) {
-  if (vol > 5 || vol < 0)
-    return;
-  snd_level = 6 - vol;
-}
-
-/*
- * Returns the number of items waiting in the sound buffer queue of
- * a channel waiting to be played. Zero means idle.
- */
-int snd_num_bufs_waiting(uint8_t num_snd_channel) {
-  if (!snd_init_complete)
-    return SND_NOT_INIT;
-
-  if (num_snd_channel > SND_NUM_CHAN - 1)
-    return SND_CHAN_INVALID;
-
-  return SND_NUM_BUFS - sem_available(&(snd_channel[num_snd_channel].num_free_bufs));
-}
-
-/*
- * Returns the number of available buffers of
- * a channel. SND_NUM_BUFS means idle.
- */
-int snd_num_bufs_free(uint8_t num_snd_channel) {
-  if (!snd_init_complete)
-    return SND_NOT_INIT;
-
-  if (num_snd_channel > SND_NUM_CHAN - 1)
-    return SND_CHAN_INVALID;
-
-  return sem_available(&(snd_channel[num_snd_channel].num_free_bufs));
-}
-
-int snd_cancel_channel(uint8_t num_snd_channel) {
-  if (!snd_init_complete)
-    return SND_NOT_INIT;
-
-  /*
-  dma_channel_abort(snd_dma_chan);
-  
-  snd_playing = false;
-    if (snd_buf != NULL)
-	  free((void*) snd_buf);
-*/
-
-  if ((num_snd_channel > SND_NUM_CHAN - 1) && (num_snd_channel != SND_CHAN_ALL))
-    return SND_CHAN_INVALID;
-
-  int loop_start = num_snd_channel;
-  int loop_end = num_snd_channel + 1;
-
-  if (num_snd_channel == SND_CHAN_ALL) {
-    loop_start = 0;
-    loop_end = SND_NUM_CHAN;
-  }
-
-  for (int i = loop_start; i < loop_end; i++) {
-    for (int h = 0; h < SND_NUM_BUFS - sem_available(&(snd_channel[i].num_free_bufs)); h++)
-      sem_release(&(snd_channel[i].num_free_bufs));
-
-    snd_channel[i].num_cur_snd_data = 0;
-  }
-
-  return SND_SUCCESS;
-}
-
-void snd_prepare_buf() {
-
-  uint32_t max_len;
-  bool buffers_waiting;
-  snd_buf_pos[num_cur_snd_buf] = 0;
-
-  num_cur_snd_buf++;
-  if (num_cur_snd_buf == 2)
-    num_cur_snd_buf = 0;
-
-
-  do {
-    max_len = snd_buf_size;
-    buffers_waiting = false;
-
-    // get number of bytes in smallest buffer
-    for (int i = 0; i < SND_NUM_CHAN; i++) {
-      if (sem_available(&(snd_channel[i].num_free_bufs)) != SND_NUM_BUFS) {
-
-        int32_t len = snd_channel[i].snd_data_len[snd_channel[i].num_cur_snd_data] - snd_channel[i].snd_data_pos[snd_channel[i].num_cur_snd_data];
-        // TODO: (snd_buf_size - snd_buf_pos[num_cur_snd_buf]) might get negative?
-        uint32_t tx_len = len > (snd_buf_size - snd_buf_pos[num_cur_snd_buf]) ? (snd_buf_size - snd_buf_pos[num_cur_snd_buf]) : len;
-
-        if (tx_len < max_len)
-          max_len = tx_len;
-
-        buffers_waiting = true;
-      }
-    }
-
-    // mix channels
-    int16_t* buf_tmp_16[SND_NUM_CHAN];
-    int8_t* buf_tmp_8[SND_NUM_CHAN];
-
-    for (int i = 0; i < SND_NUM_CHAN; i++) {
-      if (snd_channel[i].snd_bitdepth[snd_channel[i].num_cur_snd_data] == 16)
-        buf_tmp_16[i] = (int16_t*) snd_channel[i].snd_data[snd_channel[i].num_cur_snd_data];
-      else if (snd_channel[i].snd_bitdepth[snd_channel[i].num_cur_snd_data] == 8)
-        buf_tmp_8[i] = (int8_t*) snd_channel[i].snd_data[snd_channel[i].num_cur_snd_data];
-    }
-
-    for (uint32_t h = 0; h < max_len; h++)
-      snd_buf[num_cur_snd_buf][h + snd_buf_pos[num_cur_snd_buf]] = 0;
-
-    for (int i = 0; i < SND_NUM_CHAN; i++) {
-      if (sem_available(&(snd_channel[i].num_free_bufs)) != SND_NUM_BUFS) {
-        if (snd_channel[i].snd_bitdepth[snd_channel[i].num_cur_snd_data] == 16)
-          for (uint32_t h = 0; h < max_len; h++)
-            snd_buf[num_cur_snd_buf][h + snd_buf_pos[num_cur_snd_buf]] += buf_tmp_16[i][h + snd_channel[i].snd_data_pos[snd_channel[i].num_cur_snd_data]] / snd_level;
-        else if (snd_channel[i].snd_bitdepth[snd_channel[i].num_cur_snd_data] == 8)
-          for (uint32_t h = 0; h < max_len; h++)
-            snd_buf[num_cur_snd_buf][h + snd_buf_pos[num_cur_snd_buf]] += (int16_t) ((((int16_t) buf_tmp_8[i][h + snd_channel[i].snd_data_pos[snd_channel[i].num_cur_snd_data]])) << 8 ) / snd_level;
-            //snd_buf[num_cur_snd_buf][h + snd_buf_pos[num_cur_snd_buf]] += (int16_t) (((int16_t) buf_tmp_8[i][h + snd_channel[i].snd_data_pos[snd_channel[i].num_cur_snd_data]]) << 8 ) / snd_level;
-
-      }
-    }
-
-    // check if channels still have more buffers to be played
-    for (int i = 0; i < SND_NUM_CHAN; i++)
-      if (sem_available(&(snd_channel[i].num_free_bufs)) != SND_NUM_BUFS) {
-        int32_t len = snd_channel[i].snd_data_len[snd_channel[i].num_cur_snd_data] - snd_channel[i].snd_data_pos[snd_channel[i].num_cur_snd_data];
-        if (len <= max_len) {
-          // whole buffer has been played, next one
-          sem_release(&(snd_channel[i].num_free_bufs));
-
-          // cycle through available buffers
-          snd_channel[i].num_cur_snd_data++;
-          if (snd_channel[i].num_cur_snd_data == SND_NUM_BUFS)
-            snd_channel[i].num_cur_snd_data = 0;
-
-        } else {
-          // Unable to play the whole buffer at once - splitting
-          snd_channel[i].snd_data_pos[snd_channel[i].num_cur_snd_data] += max_len;
-        }
-      }
-
-    if (buffers_waiting)
-      snd_buf_pos[num_cur_snd_buf] += max_len;
-
-  } while ((max_len != 0) && (buffers_waiting));
-
-  if (buffers_waiting)
-    snd_playing = true;
-  else
-    snd_playing = false;
-}  // snd_prepare_buf
-
-void snd_tx() {
-  if (dma_channel_is_busy(snd_dma_chan))
-    return;
-
-  dma_channel_configure(snd_dma_chan, &snd_dma_config, &snd_pio->txf[snd_pio_sm], snd_buf[num_cur_snd_buf], snd_buf_pos[num_cur_snd_buf], true);  // snd_buf_pos is also the length
-
-  snd_prepare_buf();
-}
 
 void __isr snd_dma_handler() {
   if (!dma_channel_get_irq1_status(snd_dma_chan))
@@ -255,18 +71,10 @@ void __isr snd_dma_handler() {
   // clear irq flag
   dma_channel_acknowledge_irq1(snd_dma_chan);
 
-  if (snd_playing) {
-    // deque buffer if it's txSound why we're here
-    // only call txSound if there are more buffer available
-    snd_tx();
-    return;
-  } else {
-    //      for (int h = 0; h < 2; h++)
-    //	    if (snd_buf[h] != NULL) {
-    //         free((void*) snd_buf[h]);
-    //		  snd_buf[h] = NULL;
-    //	    }
-  }
+  dma_channel_configure(snd_dma_chan, &snd_dma_config, &snd_pio->txf[snd_pio_sm], snd_next_buffer, snd_next_buffer_len, true);
+
+  mutex_exit(&snd_ready);
+
 }
 
 bool snd_dma_init() {
@@ -283,25 +91,16 @@ bool snd_dma_init() {
   channel_config_set_transfer_data_size(&snd_dma_config, DMA_SIZE_16);
   channel_config_set_dreq(&snd_dma_config, pio_get_dreq(snd_pio, snd_pio_sm, true));
 
-#ifndef SND_ALLOW_DIRECT
   dma_channel_set_irq1_enabled(snd_dma_chan, true);
 
   irq_set_exclusive_handler(DMA_IRQ_1, snd_dma_handler);
-#endif
+  
+  irq_set_enabled(DMA_IRQ_1, true);
 
   snd_dma_enabled = true;
 
   return true;
 }
-
-#ifdef SND_ALLOW_DIRECT
-void snd_dma_send_buffer(int16_t* buffer, int length) {
-  while (dma_channel_is_busy(snd_dma_chan))
-    tight_loop_contents();
-
-  dma_channel_configure(snd_dma_chan, &snd_dma_config, &snd_pio->txf[snd_pio_sm], buffer, length, true);
-}
-#endif
 
 void snd_dma_shutdown(void) {
   if (!snd_dma_enabled)
@@ -404,75 +203,21 @@ bool snd_pio_init() {
  * In NONBLOCKING mode, returning 0 means, no free buffer was available and
  * the sound data could not be transmitted.
  */
-int snd_enque_buf(sbuffer_t snd_buffer, uint8_t num_snd_channel, bool blocking) {
-  
-  if (!snd_init_complete)
-    return SND_NOT_INIT;
-
-  if (num_snd_channel > SND_NUM_CHAN - 1)
-    return SND_CHAN_INVALID;
-
-  // this is a possible race condition when using multi threading
-  // buffer enque.
-
-  // request a buffer
-  if (!sem_try_acquire(&(snd_channel[num_snd_channel].num_free_bufs))) {
-    if (blocking == SND_BLOCKING)
-      // wait for a free buffer in blocking mode
-      sem_acquire_blocking(&(snd_channel[num_snd_channel].num_free_bufs));
-    else
-      // leave in non-blocking mode (not waiting for a buffer)
-      return SND_NO_FREE_BUF;
+void snd_enqueue_buffer_blocking(int16_t* snd_buffer, int len) {
+  if (preload_buffer > 1) {
+    while (!mutex_try_enter(&snd_ready, NULL))
+      tight_loop_contents();
   }
+    
+  if (preload_buffer == 1)
+    dma_channel_configure(snd_dma_chan, &snd_dma_config, &snd_pio->txf[snd_pio_sm], snd_next_buffer, snd_next_buffer_len, true);
 
-  snd_channel[num_snd_channel].num_nxt_snd_data++;
+  snd_next_buffer = snd_buffer;
+  snd_next_buffer_len = len;
 
-  if (snd_channel[num_snd_channel].num_nxt_snd_data == SND_NUM_BUFS)
-    snd_channel[num_snd_channel].num_nxt_snd_data = 0;
+  if (preload_buffer < 2)
+    preload_buffer++;
 
-  snd_channel[num_snd_channel].snd_data[snd_channel[num_snd_channel].num_nxt_snd_data] = snd_buffer.data;
-  snd_channel[num_snd_channel].snd_data_len[snd_channel[num_snd_channel].num_nxt_snd_data] = snd_buffer.len;
-  snd_channel[num_snd_channel].snd_bitdepth[snd_channel[num_snd_channel].num_nxt_snd_data] = snd_buffer.bitdepth;
-  snd_channel[num_snd_channel].snd_data_pos[snd_channel[num_snd_channel].num_nxt_snd_data] = 0;
-
-  snd_playing = true;
-
-  // if there is only one buffer in use (the one that
-  // has just been dequed) then that means
-  // there is currently no ongoing transmission and
-  // therefore the transmission must be reinitiated
-  if (sem_available(&(snd_channel[num_snd_channel].num_free_bufs)) == (SND_NUM_BUFS - 1)) {
-    snd_channel[num_snd_channel].num_cur_snd_data = snd_channel[num_snd_channel].num_nxt_snd_data;
-
-    bool reinit_tx = true;
-
-    // check if other channels have ongoing transmissions
-    // TODO: COULD A RACE CONDITION OCCUR HERE?
-    // WHERE THE CHECK IS NEGATIVE BUT THERE IS CURRENTLY AN ONGOING ISR?
-    for (int h = 0; h < SND_NUM_CHAN; h++)
-      if (sem_available(&(snd_channel[h].num_free_bufs)) != SND_NUM_BUFS && h != num_snd_channel)
-        reinit_tx = false;
-
-    if ((reinit_tx) && !irq_is_enabled(DMA_IRQ_1)) {
-      /*
-	  for (int h = 0; h < 2; h++) {
-	    if (snd_buf[h] == NULL)
-          snd_buf[h] = (uint8_t*) malloc(snd_buf_size);
-        if (snd_buf[h] == NULL) {
-	      if (h == 1)
-		   // buffer 0 has already been allocated --> undo
-	    	free((void*) snd_buf[0]);  
-		  return SND_NO_RAM;
-		}
-	  }
-*/
-      irq_set_enabled(DMA_IRQ_1, true);
-      snd_prepare_buf();
-      snd_tx();
-    }
-  }
-
-  return SND_SUCCESS;
 }
 
 bool snd_init() {
@@ -482,20 +227,15 @@ bool snd_init() {
   gpio_init(PIN_SND_EN);
   gpio_set_dir(PIN_SND_EN, GPIO_OUT);
   snd_mute();
-  
+
+  mutex_init(&snd_ready);
+  mutex_try_enter(&snd_ready, NULL);
+
   if (!snd_pio_init())
     return SND_PIO_ERR;
 
   if (!snd_dma_init())
     return SND_DMA_ERR;
-
-  for (int h = 0; h < SND_NUM_CHAN; h++) {
-    // setup semaphores and init channels
-    sem_init(&(snd_channel[h].num_free_bufs), SND_NUM_BUFS, SND_NUM_BUFS);
-    snd_channel[h].num_cur_snd_data = 0;
-    snd_channel[h].num_nxt_snd_data = 0;
-  }
-
 
   snd_set_freq(44100);
 

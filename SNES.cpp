@@ -1,5 +1,3 @@
-// MANUAL FD
-
 /*
 
 
@@ -63,17 +61,12 @@ LCD_DPI lcd = LCD_DPI();
 int brightness = 64;
 /* ---------- LCD END ------------*/
 
-mutex_t core1_go;
-
 #ifdef ROM_HEADER_FILE
 #include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_lost_vikings.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
 #endif
-
-//static bool apu_enabled = true;
-//static bool lowpass_filter = false;
-//static int frameskip = 4;
 
 // snes stuff
 bool overclock_cycles = false;
@@ -86,12 +79,16 @@ volatile int target_fps;
 uint32_t just_saved_timer;
 int just_saved = 0;
 int sd_init = 0;
+mutex_t audio_generate;
+
 
 // sound
-volatile int volume = 5;
+#define NUM_ADUDIO_BUF (3)
 #define AUDIO_SAMPLE_RATE (32000)
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
-int16_t audio_buf[2][AUDIO_SAMPLE_RATE / 50 * 2]; // stereo
+volatile int volume = 1;
+int16_t audio_buf_9x[AUDIO_SAMPLE_RATE / 47 * 2]; // stereo  // add some margin (50 = 100%, 47 = 106%)  // 2.7 kb
+int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE / 47] __attribute__((aligned(4))); // 4 kb
 
 // --- MAIN
 static void update_keymap(int id)
@@ -376,35 +373,27 @@ void core1task() {
   int ret = snd_init();
   if (ret != SND_SUCCESS)
     emu_panic("error init sound\n");
-  snd_set_freq(AUDIO_SAMPLE_RATE);
-  snd_set_vol(1);
+  snd_set_freq(AUDIO_SAMPLE_RATE);  // must never overtake video
   snd_unmute();
 
   int cur_audio_buf = 0;
 
-  int buffer_length = AUDIO_SAMPLE_RATE / target_fps;
-
-  sbuffer_t snd_buf = {
-    .bitdepth = 16,
-    .len = buffer_length,
-  };
+  int buffer_length = AUDIO_SAMPLE_RATE / target_fps * 1.04;  // add some margin to prevent crackling
 
   while (1) {
-    //while (!mutex_try_enter(&core1_go, NULL))
-    //  tight_loop_contents();
+    while (!mutex_try_enter(&audio_generate, NULL))
+      tight_loop_contents();
 
-    cur_audio_buf = cur_audio_buf == 0;
-    S9xMixSamples(audio_buf[cur_audio_buf], buffer_length * 2);
+    S9xMixSamples(audio_buf_9x, buffer_length * 2);
 
     for (int i = 0; i < buffer_length; i++)
-      audio_buf[cur_audio_buf][i] = audio_buf[cur_audio_buf][i * 2] / volume;
-    
-#if 1
-    snd_dma_send_buffer(audio_buf[cur_audio_buf], buffer_length);
-#else
-    snd_buf.data = (void*) audio_buf[cur_audio_buf];
-    snd_enque_buf(snd_buf, SND_CHAN_0, SND_BLOCKING);
-#endif
+      audio_buf[cur_audio_buf][i] = audio_buf_9x[i * 2] / volume;
+
+    cur_audio_buf++;
+    cur_audio_buf %= NUM_ADUDIO_BUF;    
+
+    snd_enqueue_buffer_blocking(audio_buf[cur_audio_buf], buffer_length);
+
   }
 #endif
 }
@@ -529,16 +518,20 @@ int main(void)
     int dropped_frames = 0;
     int manual_framedrop = 0;  // between two drawn frames there be skipped manual_framedrop frames
     int manual_framedrop_cnt = 0;
-    int fps;
+    int dfps = 0;
     unsigned long fps_timer = millis();
+
+    // battery
+    uint32_t bat_volt = 0;
+    uint32_t bat_volt_cnt = 0;
 
     gbuffer_t fb_back;
 
     printf("Starting emulation.\n");
 
 #ifdef AUDIO_ENABLE
-  mutex_init(&core1_go);
-  mutex_try_enter(&core1_go, NULL);
+  mutex_init(&audio_generate);
+  mutex_try_enter(&audio_generate, NULL);
   multicore_reset_core1();
   multicore_launch_core1(core1task);
 #endif
@@ -573,18 +566,20 @@ int main(void)
 
       S9xMainLoop();
 
-      char debug_print[11];
-      itoa(fps, debug_print, 10);
-      font_write_string(11, 11, 0x0, debug_print, (font_t*) font_13x16, fb_back);
-      font_write_string(10, 10, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
-
-
 #ifdef AUDIO_ENABLE
-      mutex_exit(&core1_go);
+      mutex_exit(&audio_generate);
 #endif
 
       /* ---------- LCD ------------*/
     if (IPPU.RenderThisFrame) {
+      char debug_print[11];
+      itoa(dfps, debug_print, 10);
+      font_write_string(11, 11, 0x0, debug_print, (font_t*) font_13x16, fb_back);
+      font_write_string(10, 10, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+      itoa(bat_volt, debug_print, 10);
+      font_write_string(10, 10 + 15, 0x0, debug_print, (font_t*) font_13x16, fb_back);
+      font_write_string(11, 11 + 15, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+
       if (just_saved) {
         uint16_t* scr = (uint16_t*) GFX.Screen;
         uint16_t col = just_saved == 1 ? 0b0000011111100000 : 0b1111100000000000;
@@ -595,19 +590,15 @@ int main(void)
         if (millis() - just_saved_timer > 2000)
           just_saved = 0;
       }
-      //IPPU.RenderThisFrame = false;
-    } else {
-      //IPPU.RenderThisFrame = true;
     }
 
 #ifdef LCD_ENABLE
     if (IPPU.RenderThisFrame == true) {
       lcd.request_pageflip();
-      lcd.refresh();
-    } else {
-      //lcd.refresh();
     }
 #endif
+ 
+    lcd.refresh();
 
       /* ---------- LCD END------------*/
       IPPU.RenderThisFrame = true;
@@ -635,10 +626,12 @@ int main(void)
         framedrop_balance = 0;
       }
 
+      bat_volt = (bat_volt * 100 + pwr_get_sply_vol()) / (100 + 1);
+
       frame_no++;
       if (millis() - fps_timer > 1000) {
-        fps = frame_no * 1000 / (millis() - fps_timer);
         printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, Memory.ROMFramesPerSecond);
+        dfps = dropped_frames;
         dropped_frames = 0;
         frame_no = 0;
         fps_timer = millis();
