@@ -62,10 +62,11 @@ int brightness = 64;
 /* ---------- LCD END ------------*/
 
 #ifdef ROM_HEADER_FILE
-#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_mario_kart.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_lost_vikings.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
-//#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
+#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
 #endif
 
 // snes stuff
@@ -564,6 +565,10 @@ int main(void)
         GFX.SubScreen = GFX.Screen;
       }
 
+#ifdef AUDIO_ENABLE
+      //mutex_try_enter(&audio_generate, NULL);
+#endif
+
       S9xMainLoop();
 
 #ifdef AUDIO_ENABLE
@@ -572,13 +577,14 @@ int main(void)
 
       /* ---------- LCD ------------*/
     if (IPPU.RenderThisFrame) {
-      char debug_print[11];
-      itoa(dfps, debug_print, 10);
+      char debug_print[20];
+      itoa(Memory.ROMFramesPerSecond - dfps, debug_print, 10);
       font_write_string(11, 11, 0x0, debug_print, (font_t*) font_13x16, fb_back);
       font_write_string(10, 10, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+
       itoa(bat_volt, debug_print, 10);
-      font_write_string(10, 10 + 15, 0x0, debug_print, (font_t*) font_13x16, fb_back);
-      font_write_string(11, 11 + 15, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+      font_write_string(11, 11 + 15, 0x0, debug_print, (font_t*) font_13x16, fb_back);
+      font_write_string(10, 10 + 15, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
 
       if (just_saved) {
         uint16_t* scr = (uint16_t*) GFX.Screen;
@@ -631,6 +637,8 @@ int main(void)
       frame_no++;
       if (millis() - fps_timer > 1000) {
         printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, Memory.ROMFramesPerSecond);
+        printf("GPIO 43: %d\n", analog_read(43));
+        printf("GPIO 44: %d\n", analog_read(44));
         dfps = dropped_frames;
         dropped_frames = 0;
         frame_no = 0;

@@ -24,8 +24,6 @@
 #include "controls.h"
 #include <hwcfg.h>
 #include <cstdio>
-
-#define RESIDUAL_CHARGE_WA
 #define RP2350_E9_WA
 
 uint16_t _analog_x_0 = 400;
@@ -68,21 +66,23 @@ keymap_t keymap[NUM_BTNS] = {
     { BUTTON_R,     PIN_BTN_R,   BTN_DIGITAL, BTN_RELEASED, BUTTON_PULL_MODE, BTN_NO_THRESHOLD, BTN_NO_THRESHOLD,     BUTTON_ACTIVE, BTN_TIMER_ZERO}, 
 //    { BUTTON_SW,    PIN_BTN_SW,  BTN_DIGITAL, BTN_RELEASED, BUTTON_PULL_MODE, BTN_NO_THRESHOLD, BTN_NO_THRESHOLD,     BUTTON_ACTIVE, BTN_TIMER_ZERO}, 
     { BUTTON_SW,    PIN_BTN_SW,  BTN_ANALOG,   BTN_RELEASED,      BTN_PULLUP,                0,              500,            -1, BTN_TIMER_ZERO}, 
+
+    { BUTTON_LEFT,  PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2250,              4095,           -1, BTN_TIMER_ZERO}, 
+    { BUTTON_RIGHT, PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1450,           -1, BTN_TIMER_ZERO}, 
+    { BUTTON_UP,    PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2250,              4095,           -1, BTN_TIMER_ZERO}, 
+    { BUTTON_DOWN,  PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1450,           -1, BTN_TIMER_ZERO}, 
 /*
-    { BUTTON_LEFT,  PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             3800,              4095,           -1, BTN_TIMER_ZERO}, 
-    { BUTTON_RIGHT, PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             1300,              2600,           -1, BTN_TIMER_ZERO}, 
-    { BUTTON_UP,    PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             3800,              4095,           -1, BTN_TIMER_ZERO}, 
-    { BUTTON_DOWN,  PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             1300,              2600,           -1, BTN_TIMER_ZERO}, 
-*/
     { BUTTON_LEFT,  PIN_ANALOG_Y, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,               0,               1000,           -1, BTN_TIMER_ZERO}, 
     { BUTTON_RIGHT, PIN_ANALOG_Y, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             3000,              4095,           -1, BTN_TIMER_ZERO}, 
     { BUTTON_UP,    PIN_ANALOG_X, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             3000,              4095,           -1, BTN_TIMER_ZERO}, 
     { BUTTON_DOWN,  PIN_ANALOG_X, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1000,           -1, BTN_TIMER_ZERO}, 
+*/
 };
 
 int analog_read(int gpio_num) {
   adc_select_input(gpio_num - ADC_PIN_OFFSET);
   int read_val = adc_read();
+
   //printf("GPIO %d is at %d\n", gpio_num, read_val);
   return (read_val); // 10 bit res
 }
@@ -256,27 +256,10 @@ uint32_t ctrl_button_state_update() {
 
       } else {
 
-        #ifdef RESIDUAL_CHARGE_WA
-        // There seems to be a charge left under some circumstances
-        gpio_init(keymap[i].gpio_num);
-        gpio_set_dir(keymap[i].gpio_num, GPIO_OUT);
-        gpio_put(keymap[i].gpio_num, 0);
-
-        adc_gpio_init(keymap[i].gpio_num);
-
-        if (keymap[i].pull_mode == BTN_PULLUP) {
-          gpio_set_pulls(keymap[i].gpio_num, true, false);
-        } else if (keymap[i].pull_mode == BTN_PULLDOWN) {
-          gpio_set_pulls(keymap[i].gpio_num, false, true);
-        } else {
-          // no pull
-        }
-        #endif
-
         int adc_value = analog_read(keymap[i].gpio_num);
         if ((adc_value > keymap[i].threshold_1) && (adc_value < keymap[i].threshold_2))
           keyresult = 1;        
-        }
+      }
 
       if (keyresult) {
         if (keymap[i].key_state == 0) {

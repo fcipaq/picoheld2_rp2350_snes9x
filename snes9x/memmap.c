@@ -54,7 +54,7 @@ void S9xDeinterleaveType1(int32_t TotalFileSize, uint8_t* base)
    }
 
    /* DS2 DMA notes: base may or may not be 32-byte aligned */
-   tmp = (uint8_t*) malloc(0x8000);
+   tmp = (uint8_t*) sfe_mem_malloc(0x8000);
 
    if (tmp)
    {
@@ -95,7 +95,7 @@ void S9xDeinterleaveGD24(int32_t TotalFileSize, uint8_t* base)
    return;
 
    /* DS2 DMA notes: base may or may not be 32-byte aligned */
-   tmp = (uint8_t*) malloc(0x80000);
+   tmp = (uint8_t*) sfe_mem_malloc(0x80000);
 
    if (tmp)
    {
@@ -230,7 +230,7 @@ static char* Safe(const char* s)
    {
       if (safe)
          free(safe);
-      safe = (char*) malloc(safe_len = len + 1);
+      safe = (char*) sfe_mem_malloc(safe_len = len + 1);
    }
 
    for (i = 0; i < len; i++)
