@@ -62,11 +62,11 @@ int brightness = 64;
 /* ---------- LCD END ------------*/
 
 #ifdef ROM_HEADER_FILE
-//#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
+#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_mario_kart.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_lost_vikings.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
-#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
 #endif
 
 // snes stuff
@@ -419,7 +419,7 @@ void setup(void) {
  
   stdio_init_all();
   
-  if (!sfe_pico_alloc_init(PIN_PSRAM_CS)) {
+  if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 70000000)) {  //70
     emu_panic("sfe error\n");
   } else
   printf("sfe init complete\n");
@@ -537,8 +537,16 @@ int main(void)
   multicore_launch_core1(core1task);
 #endif
 
-    while (1)
-    {
+//#define PSRAM_TEST
+#ifdef PSRAM_TEST
+  uint32_t* psram_test_buffer = (uint32_t*) sfe_mem_malloc(1024 * 1024 * 4);
+  assert(psram_test_buffer);
+  int skippy = 0;
+  int tainted = 0;
+  int untainted = 0;
+#endif
+
+    while (1) {
       //check_load_save();
       
       ctrl_button_state_update();
@@ -578,13 +586,25 @@ int main(void)
       /* ---------- LCD ------------*/
     if (IPPU.RenderThisFrame) {
       char debug_print[20];
-      itoa(Memory.ROMFramesPerSecond - dfps, debug_print, 10);
+      itoa(target_fps - dfps, debug_print, 10);
       font_write_string(11, 11, 0x0, debug_print, (font_t*) font_13x16, fb_back);
       font_write_string(10, 10, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
 
       itoa(bat_volt, debug_print, 10);
       font_write_string(11, 11 + 15, 0x0, debug_print, (font_t*) font_13x16, fb_back);
       font_write_string(10, 10 + 15, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+
+      itoa(pwr_get_bat_level(4 /* granularity */), debug_print, 10);
+      font_write_string(11, 11 + 30, 0x0, debug_print, (font_t*) font_13x16, fb_back);
+      font_write_string(10, 10 + 30, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+
+      if (pwr_get_source() == PWR_ON_GRD) {
+      font_write_string(11, 11 + 45, 0x0, "GRD", (font_t*) font_13x16, fb_back);
+      font_write_string(10, 10 + 45, 0xffff, "GRD", (font_t*) font_13x16, fb_back);
+      } else {
+      font_write_string(11, 11 + 45, 0x0, "BAT", (font_t*) font_13x16, fb_back);
+      font_write_string(10, 10 + 45, 0xffff, "BAT", (font_t*) font_13x16, fb_back);
+      }
 
       if (just_saved) {
         uint16_t* scr = (uint16_t*) GFX.Screen;
@@ -598,6 +618,32 @@ int main(void)
       }
     }
 
+#ifdef PSRAM_TEST
+    skippy++;
+    if (skippy > 200) {
+
+      for (uint32_t i = 0; i < 1024 * 1024; i++)
+        psram_test_buffer[i] = i;
+
+      for (uint32_t i = 0; i < 1024 * 1024; i++) {
+        if (psram_test_buffer[i] != i) {
+          tainted++;
+          break;
+        }
+      }
+      skippy = 0;
+      untainted++;
+    }
+
+    char debug_print[20];
+    itoa(untainted, debug_print, 10);
+    font_write_string(11, 11 + 75, 0x0, debug_print, (font_t*) font_13x16, fb_back);
+    font_write_string(10, 10 + 75, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+    itoa(tainted, debug_print, 10);
+    font_write_string(11, 11 + 90, 0x0, debug_print, (font_t*) font_13x16, fb_back);
+    font_write_string(10, 10 + 90, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+#endif
+
 #ifdef LCD_ENABLE
     if (IPPU.RenderThisFrame == true) {
       lcd.request_pageflip();
@@ -606,44 +652,45 @@ int main(void)
  
     lcd.refresh();
 
-      /* ---------- LCD END------------*/
-      IPPU.RenderThisFrame = true;
+    /* ---------- LCD END------------*/
+    IPPU.RenderThisFrame = true;
       
-      if (manual_framedrop) {
-        if (manual_framedrop_cnt == manual_framedrop) {
-          manual_framedrop_cnt = 0;
-        } else {
-          manual_framedrop_cnt++;
-          IPPU.RenderThisFrame = false;
-        }
-      }
-
-      framedrop_balance += (micros() - startTime) - frame_time;
-
-      if (framedrop_balance > frame_time / 2) {  // fcipaq: TODO: what amount is best?
+    if (manual_framedrop) {
+      if (manual_framedrop_cnt == manual_framedrop) {
+        manual_framedrop_cnt = 0;
+      } else {
+        manual_framedrop_cnt++;
         IPPU.RenderThisFrame = false;
       }
+    }
+
+    framedrop_balance += (micros() - startTime) - frame_time;
+
+    // too slow?
+    if (framedrop_balance > frame_time / 2) // fcipaq: TODO: what amount is best?
+      IPPU.RenderThisFrame = false;
   
-      if (framedrop_balance < -550)   // Allow some jitter
-      {
-        int32_t fpsLimiter = micros();
-        while (micros() - fpsLimiter < (-framedrop_balance))
-          ;
-        framedrop_balance = 0;
-      }
+    // too fast?
+    if (framedrop_balance < (-frame_time / 2))   // Allow some jitter
+    {
+      int32_t fpsLimiter = micros();
+      while (micros() - fpsLimiter < (-framedrop_balance))
+        tight_loop_contents();
+      framedrop_balance = 0;
+    }
 
-      bat_volt = (bat_volt * 100 + pwr_get_sply_vol()) / (100 + 1);
+    bat_volt = pwr_get_bat_vol();
 
-      frame_no++;
-      if (millis() - fps_timer > 1000) {
-        printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, Memory.ROMFramesPerSecond);
-        printf("GPIO 43: %d\n", analog_read(43));
-        printf("GPIO 44: %d\n", analog_read(44));
-        dfps = dropped_frames;
-        dropped_frames = 0;
-        frame_no = 0;
-        fps_timer = millis();
-      }
+    frame_no++;
+    if (millis() - fps_timer > 1000) {
+      printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, target_fps);
+      printf("GPIO 43: %d\n", analog_read(43));
+      printf("GPIO 44: %d\n", analog_read(44));
+      dfps = dropped_frames;
+      dropped_frames = 0;
+      frame_no = 0;
+      fps_timer = millis();
+    }
 
   }
 }

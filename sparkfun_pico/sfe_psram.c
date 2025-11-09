@@ -59,17 +59,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define SFE_SEC_TO_FS 1000000000000000ll
 
-// max select pulse width = 8us => 8e6 ns => 8000 ns => 8000 * 1e6 fs => 8000e6 fs
+// max select pulse width = 8us => 8e3 ns => 8000 ns => 8000 * 1e6 fs => 8000e6 fs
 // Additionally, the MAX select is in units of 64 clock cycles - will use a constant that
 // takes this into account - so 8000e6 fs / 64 = 125e6 fs
 const uint32_t SFE_PSRAM_MAX_SELECT_FS64 = 125000000;
 
-// min deselect pulse width = 50ns => 50 * 1e6 fs => 50e7 fs
+// min deselect pulse width = 50ns => 50 * 1e6 fs => 5e7 fs
 const uint32_t SFE_PSRAM_MIN_DESELECT_FS = 50000000;
 
 // from psram datasheet - max Freq with VDDat 3.3v - SparkFun RP2350 boards run at 3.3v.
 // If VDD = 3.0 Max Freq is 133 Mhz
-const uint32_t SFE_PSRAM_MAX_SCK_HZ = 90000000;
+uint32_t psram_freq = 45000000; // 90
 
 // PSRAM SPI command codes
 const uint8_t PSRAM_CMD_QUAD_END = 0xF5;
@@ -171,7 +171,7 @@ static void __no_inline_not_in_flash_func(set_psram_timing)(void)
 
     // Calculate the clock divider - goal to get clock used for PSRAM <= what
     // the PSRAM IC can handle - which is defined in SFE_PSRAM_MAX_SCK_HZ
-    volatile uint8_t clockDivider = (sysHz + SFE_PSRAM_MAX_SCK_HZ - 1) / SFE_PSRAM_MAX_SCK_HZ;
+    volatile uint8_t clockDivider = (sysHz + psram_freq - 1) / psram_freq;
 
     uint32_t intr_stash = save_and_disable_interrupts();
 
@@ -205,8 +205,11 @@ static void __no_inline_not_in_flash_func(set_psram_timing)(void)
 /// @param psram_cs_pin The pin that the PSRAM is connected to
 /// @return size_t The size of the PSRAM
 ///
-static size_t __no_inline_not_in_flash_func(setup_psram)(uint32_t psram_cs_pin)
+static size_t __no_inline_not_in_flash_func(setup_psram)(uint32_t psram_cs_pin, uint32_t psram_freq_param)
 {
+
+    psram_freq = psram_freq_param;
+
     // Set the PSRAM CS pin in the SDK
     gpio_set_function(psram_cs_pin, GPIO_FUNC_XIP_CS1);
 
@@ -292,9 +295,9 @@ static size_t __no_inline_not_in_flash_func(setup_psram)(uint32_t psram_cs_pin)
 // public interface
 
 // setup call
-size_t sfe_setup_psram(uint32_t psram_cs_pin)
+size_t sfe_setup_psram(uint32_t psram_cs_pin, uint32_t psram_freq_param)
 {
-    return setup_psram(psram_cs_pin);
+    return setup_psram(psram_cs_pin, psram_freq_param);
 }
 
 // update timing -- used if the system clock/timing was changed.

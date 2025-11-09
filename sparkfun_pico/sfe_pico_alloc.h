@@ -42,7 +42,7 @@ extern "C"
     size_t sfe_mem_max_free_size(void);
     size_t sfe_mem_size(void);
     size_t sfe_mem_used(void);
-    bool sfe_pico_alloc_init(int cs_pin);
+    bool sfe_pico_alloc_init(int cs_pin, uint32_t psram_freq_param);
 
 #if defined(SFE_PICO_ALLOC_WRAP)
     // c allocator wrappers - define for use as a wrapper if specified

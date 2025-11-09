@@ -68,6 +68,12 @@
 #define PIN_PWR_EN    (28)
 #define PIN_CHG_STAT  (30)
 
+// Physical battery and power supply parameters
+#define PWR_REF_VOL     (3100)
+#define PWR_BAT_MAX_VOL (4050)
+#define PWR_BAT_MIN_VOL (3300)
+#define PWR_CHG_MAX_VOL (4060)
+
 /* ------------------------ Sound ------------------------*/
 #define PIN_SND_EN    (36)
 #define PIN_I2S_LR    (37)  // LR and BCK need to be adjacent pins with LR being the lower GPIO #

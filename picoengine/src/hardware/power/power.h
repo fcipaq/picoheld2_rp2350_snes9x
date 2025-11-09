@@ -24,11 +24,6 @@
 /* ========================== includes ========================== */
 
 /* ========================= definitions ========================= */
-// Physical parameters
-#define PWR_BAT_MIN_VOLT 3100  // voltage (mV) when empty
-#define PWR_BAT_MAX_VOLT 3700  // voltage (mV) when full
-#define PWR_EXT_MIN_VOLT 4400  // min. voltage for ext. supply
-
 // Communication
 #define PWR_ON_UNKOWN 0
 #define PWR_ON_BAT 1
@@ -39,8 +34,8 @@
 /* ====================== function declarations ====================== */
 int pwr_init();
 int pwr_get_source();
-int pwr_get_bat_level();
-uint16_t pwr_get_sply_vol();
+int pwr_get_bat_level(int granularity);
+int pwr_get_bat_vol();
 void pwr_shutdown();
 
 #endif //POWER_H

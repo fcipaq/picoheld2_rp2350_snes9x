@@ -75,7 +75,7 @@ static bool _bUseHeapPool = false;
 
 // TODO: Make this configurable - heap or not via a parameter. Default will have this key off the #define
 
-bool sfe_pico_alloc_init(int cs_pin)
+bool sfe_pico_alloc_init(int cs_pin, uint32_t psram_freq_param)
 {
     if (_bInitalized)
         return true;
@@ -85,7 +85,7 @@ bool sfe_pico_alloc_init(int cs_pin)
     _mem_psram_pool = NULL;
 
     // Setup PSRAM if we have it.
-    _psram_size = sfe_setup_psram(cs_pin);
+    _psram_size = sfe_setup_psram(cs_pin, psram_freq_param);
 
     // printf("PSRAM size: %u\n", _psram_size);
     if (!_bUseHeapPool)

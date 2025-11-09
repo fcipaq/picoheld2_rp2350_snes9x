@@ -37,7 +37,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /// @param psram_cs_pin The pin that the PSRAM is connected to
 /// @return size_t The size of the PSRAM
 ///
-size_t sfe_setup_psram(uint32_t psram_cs_pin);
+size_t sfe_setup_psram(uint32_t psram_cs_pin, uint32_t psram_freq_param);
 
 /// @brief The sfe_psram_update_timing function - note that this is not in flash
 ///
