@@ -119,8 +119,8 @@
 /* ---------------------- SD card ----------------------*/
 #define PIN_SD_SCK     (34)
 #define PIN_SD_MOSI    (35)
-#define PIN_SD_MISO    (32)
-#define PIN_SD_CS      (33)
+#define PIN_SD_MISO_TX (32)
+#define PIN_SD_CS_RX   (33)
 #define PIN_SD_DET     (31)
 
 /* ---------------------- PSRAM ----------------------*/

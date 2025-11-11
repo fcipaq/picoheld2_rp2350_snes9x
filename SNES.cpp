@@ -3,18 +3,11 @@
 
 */
 
-//#define MICROSD
 #define ROM_HEADER_FILE
-//#define EMULATION_ONLY
-
 #include <picoengine.h>
 #include <fonts/fontfiles/f13x16.h>
 
 //#include <Arduino.h>
-
-#ifdef MICROSD
-#include <SD.h>
-#endif
 
 //#include <cassert>
 #include <stdlib.h>
@@ -34,10 +27,8 @@ extern "C" {
 #include "sparkfun_pico/sfe_pico.h"
 }
 
-#ifndef EMULATION_ONLY
 #include "hwcfg.h"
 #include "controls.h"
-#endif
 
 extern "C" {
 #include "snes9x/snes9x.h"
@@ -62,11 +53,11 @@ int brightness = 64;
 /* ---------- LCD END ------------*/
 
 #ifdef ROM_HEADER_FILE
-#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_mario_kart.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_lost_vikings.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
-//#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
+#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
 #endif
 
 // snes stuff
@@ -316,16 +307,15 @@ void S9xDeinitDisplay(void)
 
 uint32_t S9xReadJoypad(int32_t port)
 {
-    if (port != 0)
-        return 0;
+  if (port != 0)
+    return 0;
 
-    uint32_t joypad = 0;
+  uint32_t joypad = 0;
 
-#ifndef EMULATION_ONLY
-   if (ctrl_is_pressed(BUTTON_LEFT)) joypad |= SNES_LEFT_MASK;
-   if (ctrl_is_pressed(BUTTON_RIGHT)) joypad |= SNES_RIGHT_MASK;
-   if (ctrl_is_pressed(BUTTON_UP)) joypad |= SNES_UP_MASK;
-   if (ctrl_is_pressed(BUTTON_DOWN)) joypad |= SNES_DOWN_MASK;
+  if (ctrl_is_pressed(BUTTON_LEFT)) joypad |= SNES_LEFT_MASK;
+  if (ctrl_is_pressed(BUTTON_RIGHT)) joypad |= SNES_RIGHT_MASK;
+  if (ctrl_is_pressed(BUTTON_UP)) joypad |= SNES_UP_MASK;
+if (ctrl_is_pressed(BUTTON_DOWN)) joypad |= SNES_DOWN_MASK;
   
   if (ctrl_is_pressed(BUTTON_ST)) joypad |= SNES_START_MASK;
   if (ctrl_is_pressed(BUTTON_SEL)) joypad |= SNES_SELECT_MASK;
@@ -337,7 +327,7 @@ uint32_t S9xReadJoypad(int32_t port)
 
   if (ctrl_is_pressed(BUTTON_R)) joypad |= SNES_TR_MASK;
   if (ctrl_is_pressed(BUTTON_L)) joypad |= SNES_TL_MASK;
-#endif
+
   return joypad;
 }
 
@@ -418,8 +408,15 @@ void setup(void) {
   #endif
  
   stdio_init_all();
-  
-  if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 70000000)) {  //70
+
+  // Initialize chosen UART peripheral (UART0 here)
+  uart_init(uart0, 115200);
+
+  // Set the GPIO pins for UART0 TX and RX
+  gpio_set_function(PIN_SD_CS_RX /* RX */, GPIO_FUNC_UART);
+  gpio_set_function(PIN_SD_MISO_TX /* TX */, GPIO_FUNC_UART);
+
+  if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 70000000)) {  //70  // Pimoroni can do 90 - why?
     emu_panic("sfe error\n");
   } else
   printf("sfe init complete\n");
@@ -447,11 +444,6 @@ void setup(void) {
   lcd_backlight_init();
   lcd_backlight_set(50);
 #endif
-#ifdef MICROSD
-  printf("Initializing SPI...\n");
-  SPI.begin(PIN_SD_SCK, PIN_SD_MISO, PIN_SD_MOSI, -1);
-#endif
-
 
 }
 
@@ -573,10 +565,6 @@ int main(void)
         GFX.SubScreen = GFX.Screen;
       }
 
-#ifdef AUDIO_ENABLE
-      //mutex_try_enter(&audio_generate, NULL);
-#endif
-
       S9xMainLoop();
 
 #ifdef AUDIO_ENABLE
@@ -633,6 +621,7 @@ int main(void)
       }
       skippy = 0;
       untainted++;
+      printf("memory corruption (tainted/untainted): %d/%d\n", tainted, untainted);
     }
 
     char debug_print[20];
