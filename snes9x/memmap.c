@@ -250,7 +250,9 @@ static char* Safe(const char* s)
 /**********************************************************************************************/
 
 uint8_t TileCached[MAX_2BIT_TILES];
-//uint8_t TileCache[MAX_2BIT_TILES];
+#ifdef DISABLE_TILE_CACHE
+uint8_t TileCache[MAX_2BIT_TILES];
+#endif
 
 bool S9xInitMemory(void)
 {
@@ -259,8 +261,11 @@ bool S9xInitMemory(void)
    Memory.SRAM  = (uint8_t*) sfe_mem_malloc(SRAM_SIZE);  // 128kB
    Memory.VRAM  = (uint8_t*) sfe_mem_malloc(VRAM_SIZE);  // 64kB
    Memory.FillRAM = (uint8_t*) sfe_mem_malloc(0x8000);  // 32kB
-   //IPPU.TileCache = (uint8_t*) TileCache;// 4kB
+#ifdef DISABLE_TILE_CACHE
+   IPPU.TileCache = (uint8_t*) TileCache;// 4kB
+#else
    IPPU.TileCache = (uint8_t*) sfe_mem_malloc(MAX_2BIT_TILES * 128);  // 512kB
+#endif
    IPPU.TileCached = (uint8_t*) TileCached;  // 4kB
    bytes0x2000 = (uint8_t*) sfe_mem_malloc(0x2000);  // 8 kB
 

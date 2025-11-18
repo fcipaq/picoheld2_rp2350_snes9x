@@ -21,15 +21,6 @@
 #ifndef HWCFG_H
 #define HWCFG_H
 
-// 0 = dev board      (protoss) - no longer exists
-// 1 = old prototype  (marble white) - no longer exists
-// 2 = new prototype  (Leo) - no longer exists
-// 3 = RC1            (J) - no longer exists
-// 4 = RC2            (Dev) - no longer exists
-// 5 = RC3            (published version)
-// 6 = IPS            (IPS display)
-// 7 = SPI testing
-// 8 = RP2350
 // 9 = DPI Pimoroni PGA2350 w/ Startek display
 // 10 = P2 w/ Buydisplay display
 
@@ -49,18 +40,18 @@
 #define PIN_ANALOG_X  (45)
 #define PIN_ANALOG_Y  (47)
 
-#define PIN_BTN_A  (26)  // A
-#define PIN_BTN_B  (25)  // B
-#define PIN_BTN_X  (22)  // X
-#define PIN_BTN_Y  (24)  // Y
-#define PIN_BTN_L  (42)  // L
-#define PIN_BTN_R  (27)  // R
-#define PIN_BTN_ST  (29)  // St
-#define PIN_BTN_SEL  (23)  // Sel
-#define PIN_BTN_SW  (46)  // Ana SW
+#define PIN_BTN_A     (26)  // A
+#define PIN_BTN_B     (25)  // B
+#define PIN_BTN_X     (22)  // X
+#define PIN_BTN_Y     (24)  // Y
+#define PIN_BTN_L     (42)  // L
+#define PIN_BTN_R     (27)  // R
+#define PIN_BTN_ST    (29)  // St
+#define PIN_BTN_SEL   (23)  // Sel
+#define PIN_BTN_SW    (46)  // Ana SW
 
-#define PIN_DPAD_LR  (43)  // LR
-#define PIN_DPAD_UD  (44)  // UD
+#define PIN_DPAD_LR   (43)  // LR
+#define PIN_DPAD_UD   (44)  // UD
 
 /* ------------------------ Power management ------------------------*/
 #define PIN_BAT_ADC   (40)
@@ -114,16 +105,20 @@
 // LCD SPI
 #define PIN_LCD_SCK     (34)
 #define PIN_LCD_MOSI    (35)
-#define PIN_LCD_CS      (3)
+#define PIN_LCD_CS       (3)
 
 /* ---------------------- SD card ----------------------*/
-#define PIN_SD_SCK     (34)
-#define PIN_SD_MOSI    (35)
-#define PIN_SD_MISO_TX (32)
-#define PIN_SD_CS_RX   (33)
-#define PIN_SD_DET     (31)
+#define PIN_SD_SCK      (34)
+#define PIN_SD_MOSI     (35)
+#define PIN_SD_MISO     (32)
+#define PIN_SD_CS       (33)
+#define PIN_SD_DET      (31)
+
+#define PIN_DBG_UART_RX (PIN_SD_CS)    // double function
+#define PIN_DBG_UART_TX (PIN_SD_MISO)  // double function
 
 /* ---------------------- PSRAM ----------------------*/
+#define PSRAM_ENABLE    (1)
 #define PIN_PSRAM_CS    (0)
 
 #endif  // CONFIG SELECTION

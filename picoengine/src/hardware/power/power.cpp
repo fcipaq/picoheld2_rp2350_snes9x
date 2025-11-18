@@ -19,11 +19,22 @@
  */
  
 #include "hardware/adc.h"
+#include "pico/time.h"
 
 #include "power.h"
 #include <hwcfg.h>
 
 uint32_t bat_vol;
+
+void pwr_sd_sply(bool state) {
+  if (!state) {  
+    gpio_set_dir(PIN_SD_DET, GPIO_OUT);
+    gpio_put(PIN_SD_DET, 1);  // override the HW SD_DET line
+  } else {
+    gpio_set_dir(PIN_SD_DET, GPIO_IN);
+    gpio_set_pulls(PIN_SD_DET, false, false);  // floating means SD_DET can control the power line
+  }
+}
 
 // Read raw battery voltage (without averaging)
 uint16_t pwr_read_bat_vol() {

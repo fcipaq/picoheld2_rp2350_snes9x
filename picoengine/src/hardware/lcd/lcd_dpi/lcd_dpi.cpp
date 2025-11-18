@@ -569,18 +569,14 @@ void LCD_DPI::display_start() {
 
   gpio_put(PIN_LCD_CS, 1);  // deassert CS
 
-  gpio_put(PIN_LCD_RST, 1);
-  sleep_ms(120);
+  //gpio_put(PIN_LCD_RST, 1);
+  //sleep_ms(120);
   gpio_put(PIN_LCD_RST, 0);
   sleep_ms(120);
-  gpio_put(PIN_LCD_RST, 1);
-  sleep_ms(120);
+//  gpio_put(PIN_LCD_RST, 1);
+//  sleep_ms(120);
 
   display_init();
-
-  //set_brightness(20);
-
-//  us_status.lcd_en = 1;
 } // start
 
 lcd_error_t LCD_DPI::deinit() {

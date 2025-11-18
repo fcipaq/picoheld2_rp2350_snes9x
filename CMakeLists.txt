@@ -52,6 +52,7 @@ target_link_libraries(SNES
         pico_stdlib
         snes9x_rp2350
         picoengine
+        pico_fatfs
 		sparkfun_pico)
 
 # Add the standard include files to the build
@@ -77,6 +78,7 @@ pico_add_extra_outputs(SNES)
 add_subdirectory(snes9x)
 add_subdirectory(picoengine)
 add_subdirectory(sparkfun_pico)
+add_subdirectory(pico_fatfs)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")

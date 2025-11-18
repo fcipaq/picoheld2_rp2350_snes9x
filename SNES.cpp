@@ -1,7 +1,9 @@
 /*
-
+4 kb ram free
 
 */
+#include "tf_card.h"
+#include "ff.h"
 
 #define ROM_HEADER_FILE
 #include <picoengine.h>
@@ -53,11 +55,11 @@ int brightness = 64;
 /* ---------- LCD END ------------*/
 
 #ifdef ROM_HEADER_FILE
-//#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
+#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_mario_kart.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_lost_vikings.h"
 //#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
-#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
+//#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
 #endif
 
 // snes stuff
@@ -70,7 +72,7 @@ volatile int target_fps;
 // save state
 uint32_t just_saved_timer;
 int just_saved = 0;
-int sd_init = 0;
+int _sd_init = 0;
 mutex_t audio_generate;
 
 
@@ -78,8 +80,7 @@ mutex_t audio_generate;
 #define NUM_ADUDIO_BUF (3)
 #define AUDIO_SAMPLE_RATE (32000)
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
-volatile int volume = 1;
-int16_t audio_buf_9x[AUDIO_SAMPLE_RATE / 47 * 2]; // stereo  // add some margin (50 = 100%, 47 = 106%)  // 2.7 kb
+volatile int volume = 8;
 int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE / 47] __attribute__((aligned(4))); // 4 kb
 
 // --- MAIN
@@ -107,13 +108,13 @@ static bool save_state_handler(char *filename)
 
   printf("Savestate handler called...\n\n");
 
-  if (!sd_init) {
+  if (!_sd_init) {
     if (!SD.begin(PIN_SD_CS, SPI, 10000000)) {
       printf("Unable to init SD card\n");
       goto bailout;
     }
 
-    sd_init = 1;
+    _sd_init = 1;
   }
 
   if (SD.exists(filename)) {
@@ -173,7 +174,7 @@ static bool load_state_handler(char *filename)
   printf("Loadstate handler called...\n\n");
 
 #if MICROSD
-  if (!sd_init) {
+  if (!_sd_init) {
     if (!SD.begin(PIN_SD_CS, SPI, 10000000)) {
       printf("Unable to init SD card\n\n");
       just_saved_timer = millis();
@@ -181,7 +182,7 @@ static bool load_state_handler(char *filename)
       return false;
     }
 
-    sd_init = 1;
+    _sd_init = 1;
   }
 
   File readstate_file = SD.open(filename_local, FILE_READ);
@@ -353,14 +354,18 @@ void JustifierButtons(uint32_t *justifiers)
 
 void emu_panic(char* str)
 {
-  while(1) {
+  for (int i = 0; i < 10; i++) {
     printf(str);
     sleep_ms(1000);
   }
+  pwr_shutdown();
+
 }
 
 void core1task() {
 #ifdef AUDIO_ENABLE
+  int16_t* audio_buf_9x = (int16_t*) sfe_mem_malloc(AUDIO_SAMPLE_RATE / 47 * 2 * 2); // stereo  // add some margin (50 = 100%, 47 = 106%)  // 2.7 kb
+  
   int ret = snd_init();
   if (ret != SND_SUCCESS)
     emu_panic("error init sound\n");
@@ -397,10 +402,78 @@ uint32_t micros() {
   return to_us_since_boot(get_absolute_time());
 }
 
+int sd_init() {
+    FATFS fs;
+    FIL fil;
+    FRESULT fr;     /* FatFs return code */
+    UINT br;
+    UINT bw;
+
+    // modify below if customized configuration is needed
+    pico_fatfs_spi_config_t config = {
+        spi0,  // if unmatched SPI pin assignments with spi0/spi1 or explicitly designated as NULL, SPI PIO will be configured 
+        CLK_SLOW_DEFAULT,
+        150000000 / 4, //CLK_FAST_DEFAULT,
+        PIN_SD_MISO,  // SPIx_RX
+        PIN_SD_CS,
+        PIN_SD_SCK,   // SPIx_SCK
+        PIN_SD_MOSI,  // SPIx_TX
+        true   // use internal pullup
+    };
+
+    bool spi_configured = pico_fatfs_set_config(&config);
+
+    if (!spi_configured)
+      emu_panic("sd spi failed");
+    for (int i = 0; i < 2; i++) {
+      fr = f_mount(&fs, "", 1);
+      if (fr == FR_OK)
+        break;
+      printf("mount failed: %d retrying.\n", (int) fr);
+      pwr_sd_sply(0);
+      sleep_ms(1000);
+      pwr_sd_sply(1);
+      sleep_ms(1000);
+      pico_fatfs_reboot_spi();
+    }
+
+    if (fr != FR_OK)
+      return false;
+
+    printf("mount complete\n");
+
+  fr = f_open(&fil, "bench.dat", FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
+
+  if (fr != FR_OK) {
+      printf("open file failed: %d\n", (int) fr);
+      emu_panic("open file failed");
+  }
+  
+  printf("openy complete\n");
+
+  char test_str[] = "This is a test :)";
+
+  fr = f_write(&fil, test_str, 17, &bw);
+
+  if (fr != FR_OK) {
+      printf("write file failed: %d\n", (int) fr);
+      emu_panic("write file failed");
+  }
+
+  printf("written bytes: %d\n", bw);
+
+  f_close(&fil);
+
+  sleep_ms(250);
+  //f_close(&fil);
+
+  return 0;
+}
+
 void setup(void) {
   int ret;
 
-  #if 1
+  #if 0
   vreg_set_voltage(VREG_VOLTAGE_1_20);
   sleep_ms(10);
   uint32_t sys_clock_khz = 300000;
@@ -409,18 +482,20 @@ void setup(void) {
  
   stdio_init_all();
 
+#if 0
   // Initialize chosen UART peripheral (UART0 here)
   uart_init(uart0, 115200);
 
   // Set the GPIO pins for UART0 TX and RX
   gpio_set_function(PIN_SD_CS_RX /* RX */, GPIO_FUNC_UART);
   gpio_set_function(PIN_SD_MISO_TX /* TX */, GPIO_FUNC_UART);
+#endif
 
   if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 70000000)) {  //70  // Pimoroni can do 90 - why?
     emu_panic("sfe error\n");
   } else
   printf("sfe init complete\n");
-
+  
   printf("online\n");
 
   pe_config_t pe_cfg = {
@@ -443,6 +518,12 @@ void setup(void) {
 
   lcd_backlight_init();
   lcd_backlight_set(50);
+  
+  sleep_ms(5000);
+
+  printf("sd_init\n");
+  sd_init();
+  //pwr_shutdown();
 #endif
 
 }

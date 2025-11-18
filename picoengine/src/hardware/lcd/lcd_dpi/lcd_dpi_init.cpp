@@ -29,7 +29,7 @@
 // Mode 0 software SPI
 // SPI is only used for LCD setup, so no hi speed necessary
 // SW SPI for portability reasons
-void spi_send_byte(uint8_t val, int dc) {
+void lcd_spi_send_byte(uint8_t val, int dc) {
   // write command
   gpio_put(PIN_LCD_MOSI, dc == SPI_COMMAND ? 0 : 1);  // 0: cmd; 1: data
 
@@ -53,7 +53,7 @@ void lcd_spi_send(const uint8_t* init_seq) {
 
   gpio_put(PIN_LCD_CS, 0);  // assert CS
 
-  //spi_send_byte(0x01); // SW reset
+  //lcd_spi_send_byte(0x01); // SW reset
   //sleep_ms(120);
 
   int pos = 0;
@@ -80,7 +80,7 @@ void lcd_spi_send(const uint8_t* init_seq) {
     
     for (int i = 0; i < n; i++) {
       pos++;
-      spi_send_byte(init_seq[pos], i == 0 ? SPI_COMMAND : SPI_DATA);
+      lcd_spi_send_byte(init_seq[pos], i == 0 ? SPI_COMMAND : SPI_DATA);
     }
 
     pos++;
