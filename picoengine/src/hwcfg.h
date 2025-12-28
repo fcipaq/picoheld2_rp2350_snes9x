@@ -54,24 +54,22 @@
 #define PIN_DPAD_UD   (44)  // UD
 
 /* ------------------------ Power management ------------------------*/
-#define PIN_BAT_ADC   (40)
-//#define PIN_5V_ADC    (41)
+#define PIN_BAT_ADC   (41)
 #define PIN_PWR_EN    (28)
 #define PIN_CHG_STAT  (30)
 
-// Physical battery and power supply parameters
-#define PWR_REF_VOL     (3100)
+// Physical battery and power supply parameters (in mV)
+#define PWR_REF_VOL     (3300)
 #define PWR_BAT_MAX_VOL (4050)
 #define PWR_BAT_MIN_VOL (3300)
 #define PWR_CHG_MAX_VOL (4060)
 
 /* ------------------------ Sound ------------------------*/
-#define PIN_SND_EN    (36)
+/* supported frequencies (kHz): 44.1, 32, 16, 8 */
+#define PIN_SND_EN    (40)
 #define PIN_I2S_LR    (37)  // LR and BCK need to be adjacent pins with LR being the lower GPIO #
 #define PIN_I2S_BCK   (38)
 #define PIN_I2S_DAT   (39)
-
-/* supported frequencies (kHz): 44.1, 32, 16, 8 */
 
 /* ---------------------- LCD ----------------------*/
 #define LCD_IF_DPI
@@ -103,19 +101,21 @@
 #define PIN_LCD_RST      (2)    // reset pin
 
 // LCD SPI
-#define PIN_LCD_SCK     (34)
-#define PIN_LCD_MOSI    (35)
+#define PIN_LCD_SCK     (34)   // shared pin
+#define PIN_LCD_MOSI    (36)
 #define PIN_LCD_CS       (3)
 
 /* ---------------------- SD card ----------------------*/
-#define PIN_SD_SCK      (34)
+#define PIN_SD_SCK      (PIN_LCD_SCK)   // shared pin
 #define PIN_SD_MOSI     (35)
 #define PIN_SD_MISO     (32)
 #define PIN_SD_CS       (33)
 #define PIN_SD_DET      (31)
 
-#define PIN_DBG_UART_RX (PIN_SD_CS)    // double function
-#define PIN_DBG_UART_TX (PIN_SD_MISO)  // double function
+#define SD_SPI_SPEED    (40000000)     // 40 MHz
+
+#define PIN_DBG_UART_RX (PIN_SD_CS)    // shared pin
+#define PIN_DBG_UART_TX (PIN_SD_MISO)  // shared pin
 
 /* ---------------------- PSRAM ----------------------*/
 #define PSRAM_ENABLE    (1)

@@ -5,7 +5,6 @@
 #include "tf_card.h"
 #include "ff.h"
 
-#define ROM_HEADER_FILE
 #include <picoengine.h>
 #include <fonts/fontfiles/f13x16.h>
 
@@ -54,14 +53,6 @@ LCD_DPI lcd = LCD_DPI();
 int brightness = 64;
 /* ---------- LCD END ------------*/
 
-#ifdef ROM_HEADER_FILE
-#include "/home/pico/pico/snes_rp2350/snes/rom_super_mario_world.h"
-//#include "/home/pico/pico/snes_rp2350/snes/rom_mario_kart.h"
-//#include "/home/pico/pico/snes_rp2350/snes/rom_lost_vikings.h"
-//#include "/home/pico/pico/snes_rp2350/snes/rom_earthworm_jim2_PATCHED.h"
-//#include "/home/pico/pico/snes_rp2350/snes/rom_lion_king.h"
-#endif
-
 // snes stuff
 bool overclock_cycles = false;
 int one_c = 4, slow_one_c = 5, two_c = 6;
@@ -80,7 +71,7 @@ mutex_t audio_generate;
 #define NUM_ADUDIO_BUF (3)
 #define AUDIO_SAMPLE_RATE (32000)
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
-volatile int volume = 8;
+volatile int volume = 1;
 int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE / 47] __attribute__((aligned(4))); // 4 kb
 
 // --- MAIN
@@ -109,7 +100,7 @@ static bool save_state_handler(char *filename)
   printf("Savestate handler called...\n\n");
 
   if (!_sd_init) {
-    if (!SD.begin(PIN_SD_CS, SPI, 10000000)) {
+    if (!SD.begin(PIN_SD_CS, SPI, SD_SPI_SPEED)) {
       printf("Unable to init SD card\n");
       goto bailout;
     }
@@ -219,7 +210,7 @@ static bool load_state_handler(char *filename)
 
   printf("Game state loaded.\n");
 
-  return S9xLoadState();<
+  return S9xLoadState();
 #else
   return false;
 #endif
@@ -316,7 +307,7 @@ uint32_t S9xReadJoypad(int32_t port)
   if (ctrl_is_pressed(BUTTON_LEFT)) joypad |= SNES_LEFT_MASK;
   if (ctrl_is_pressed(BUTTON_RIGHT)) joypad |= SNES_RIGHT_MASK;
   if (ctrl_is_pressed(BUTTON_UP)) joypad |= SNES_UP_MASK;
-if (ctrl_is_pressed(BUTTON_DOWN)) joypad |= SNES_DOWN_MASK;
+  if (ctrl_is_pressed(BUTTON_DOWN)) joypad |= SNES_DOWN_MASK;
   
   if (ctrl_is_pressed(BUTTON_ST)) joypad |= SNES_START_MASK;
   if (ctrl_is_pressed(BUTTON_SEL)) joypad |= SNES_SELECT_MASK;
@@ -324,7 +315,7 @@ if (ctrl_is_pressed(BUTTON_DOWN)) joypad |= SNES_DOWN_MASK;
   if (ctrl_is_pressed(BUTTON_A)) joypad |= SNES_A_MASK;
   if (ctrl_is_pressed(BUTTON_B)) joypad |= SNES_B_MASK;
   if (ctrl_is_pressed(BUTTON_X)) joypad |= SNES_X_MASK;
-  if (ctrl_is_pressed(BUTTON_Y)) joypad |= SNES_X_MASK;
+  if (ctrl_is_pressed(BUTTON_Y)) joypad |= SNES_Y_MASK;
 
   if (ctrl_is_pressed(BUTTON_R)) joypad |= SNES_TR_MASK;
   if (ctrl_is_pressed(BUTTON_L)) joypad |= SNES_TL_MASK;
@@ -403,6 +394,8 @@ uint32_t micros() {
 }
 
 int sd_init() {
+    int ret = 0;
+
     FATFS fs;
     FIL fil;
     FRESULT fr;     /* FatFs return code */
@@ -427,6 +420,7 @@ int sd_init() {
       emu_panic("sd spi failed");
     for (int i = 0; i < 2; i++) {
       fr = f_mount(&fs, "", 1);
+      //fr = f_mount(NULL, "", 1);  // unmount
       if (fr == FR_OK)
         break;
       printf("mount failed: %d retrying.\n", (int) fr);
@@ -442,38 +436,56 @@ int sd_init() {
 
     printf("mount complete\n");
 
-  fr = f_open(&fil, "bench.dat", FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
+  //fr = f_open(&fil, "bench.dat", FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
+  fr = f_open(&fil, "rom.bin", FA_READ);
 
   if (fr != FR_OK) {
       printf("open file failed: %d\n", (int) fr);
-      emu_panic("open file failed");
+      //emu_panic("open file failed");
+      return -1;
   }
   
-  printf("openy complete\n");
+  printf("open complete\n");
 
-  char test_str[] = "This is a test :)";
+  //fr = f_write(&fil, test_str, 17, &bw);
+  #define READ_LEN (2048)
+  uint32_t unread_bytes = f_size(&fil);
+  uint8_t* buf = (uint8_t*) sfe_mem_malloc(unread_bytes);
 
-  fr = f_write(&fil, test_str, 17, &bw);
-
-  if (fr != FR_OK) {
-      printf("write file failed: %d\n", (int) fr);
-      emu_panic("write file failed");
+  if (!buf) {
+    printf("unable to get buffer (%d bytes).\n", unread_bytes);
+    ret = -1;
+    goto bailout;
   }
 
-  printf("written bytes: %d\n", bw);
+  printf("Got buffer (%d bytes).\n", unread_bytes);
+
+  Memory.ROM = buf;
+  Memory.ROM_Size = unread_bytes;
+
+  while (unread_bytes) {
+    UINT bytes_read;
+    fr = f_read (&fil, buf, READ_LEN, &bytes_read);
+    buf += bytes_read;
+    unread_bytes -= bytes_read;
+    if ((fr != FR_OK) && unread_bytes) {
+      printf("read error occured\n");
+      ret = -2;
+      goto bailout;
+    }
+  }
+
+bailout:
 
   f_close(&fil);
 
-  sleep_ms(250);
-  //f_close(&fil);
-
-  return 0;
+  return ret;
 }
 
 void setup(void) {
   int ret;
 
-  #if 0
+  #if 1
   vreg_set_voltage(VREG_VOLTAGE_1_20);
   sleep_ms(10);
   uint32_t sys_clock_khz = 300000;
@@ -517,12 +529,14 @@ void setup(void) {
   printf("lcd init complete.\n");
 
   lcd_backlight_init();
-  lcd_backlight_set(50);
-  
-  sleep_ms(5000);
+  lcd_backlight_set(20);
 
-  printf("sd_init\n");
-  sd_init();
+  printf("trying to get some PSRAM\n");
+  uint16_t* test  = (uint16_t*) sfe_mem_malloc(1024);
+  if (!test) {
+    emu_panic("PSRAM ERROR\n");
+  }
+
   //pwr_shutdown();
 #endif
 
@@ -560,17 +574,15 @@ int main(void)
     if (!S9xInitGFX())
         emu_panic("Graphics init failed!\n");
 
-#ifdef ROM_HEADER_FILE
-    Memory.ROM = (uint8_t*) ROM_DATA;
-    Memory.ROM_Size = ROM_SIZE;
-#else
-      Memory.ROM_Size = 0x400000;  // Donkey Kong Country
-      //Memory.ROM_Size = 0x300000;  // Lion King
-      //Memory.ROM_Size = 2621440;  // All Stars + Super Mario World
-#endif
+//  Memory.ROM = (uint8_t*) ROM_DATA;
+//  Memory.ROM_Size = ROM_SIZE;
+  Memory.ROM_is_writable = true;
 
-    if (!LoadROM(NULL))
-        emu_panic("ROM loading failed!\n");
+  printf("sd_init\n");
+  sd_init();
+
+  if (!LoadROM(NULL))
+    emu_panic("ROM loading failed!\n");
  
   target_fps = 50;//Memory.ROMFramesPerSecond;
   int frame_time = 1000000 / target_fps;
@@ -623,7 +635,7 @@ int main(void)
       //check_load_save();
       
       ctrl_button_state_update();
-      if (ctrl_is_pressed(BUTTON_SEL))
+      if (ctrl_is_pressed(BUTTON_SW))
         pwr_shutdown();
 
       if (ctrl_is_pressed(BUTTON_L)) {
@@ -720,8 +732,6 @@ int main(void)
     }
 #endif
  
-    lcd.refresh();
-
     /* ---------- LCD END------------*/
     IPPU.RenderThisFrame = true;
       
@@ -760,6 +770,23 @@ int main(void)
       dropped_frames = 0;
       frame_no = 0;
       fps_timer = millis();
+      printf("Bat vol: %d\n", pwr_get_bat_vol());
+      printf("Power src: %d\n", pwr_get_source());
+      printf("A: %d\n", ctrl_is_pressed(BUTTON_A));
+      printf("B: %d\n", ctrl_is_pressed(BUTTON_B));
+      printf("X: %d\n", ctrl_is_pressed(BUTTON_X));
+      printf("Y: %d\n", ctrl_is_pressed(BUTTON_Y));
+      printf("L: %d\n", ctrl_is_pressed(BUTTON_L));
+      printf("R: %d\n", ctrl_is_pressed(BUTTON_R));
+      printf("ST: %d\n", ctrl_is_pressed(BUTTON_ST));
+      printf("SEL: %d\n", ctrl_is_pressed(BUTTON_SEL));
+      printf("ASW: %d\n", ctrl_is_pressed(BUTTON_SW));
+      printf("LEFT: %d %d\n", ctrl_is_pressed(BUTTON_LEFT), analog_read(PIN_DPAD_LR));
+      printf("RIGHT: %d %d\n", ctrl_is_pressed(BUTTON_RIGHT), analog_read(PIN_DPAD_LR));
+      printf("UP: %d %d\n", ctrl_is_pressed(BUTTON_UP), analog_read(PIN_DPAD_UD));
+      printf("DOWN: %d %d\n", ctrl_is_pressed(BUTTON_DOWN), analog_read(PIN_DPAD_UD));
+      printf("ANA X: %d\n", analog_read(PIN_ANALOG_X));
+      printf("ANA Y: %d\n", analog_read(PIN_ANALOG_Y));
     }
 
   }

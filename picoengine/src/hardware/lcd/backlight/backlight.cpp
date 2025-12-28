@@ -19,6 +19,7 @@ int lcd_backlight_set(int level) {
 void lcd_backlight_init() {
   // setup backlight PWM
   lcd_backlight_level = 0;
+  gpio_init(PIN_LCD_BL_PWM);
   gpio_set_function(PIN_LCD_BL_PWM, GPIO_FUNC_PWM);
   uint slice_num_backlight = pwm_gpio_to_slice_num(PIN_LCD_BL_PWM);
   pwm_clear_irq(slice_num_backlight);

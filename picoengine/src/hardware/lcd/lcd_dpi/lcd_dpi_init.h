@@ -44,18 +44,32 @@ void lcd_spi_send(const uint8_t* init_seq);
 /*************************** init sequences ***********************/
 
 // *************** Init code for 720x720 square ZJY400-8532ANT by SUNMAXIC (NV3052C controller IC) ***************
-static const uint8_t nv3052c_sunmaxic_init_operations[] = {
-  WRITE, 2, 0x36, 0x09, //default: 0X0a, // 0x09 flipped vertically and horizontally, 0a: default
+static const uint8_t sunmixic_init_operations[] = {
+  // EXT page 1 (vendor specifig commands)
+  WRITE, 2, 0xFF, 0x30,              
+  WRITE, 2, 0xFF, 0x52,
+  WRITE, 2, 0xFF, 0x01,
+	
+  WRITE, 2, 0xE3, 0x00,   // magic
+  WRITE, 2, 0x0A, 0x00,   // magic
 
-	WRITE, 1, 0x11,  // Sleep out
+  //WRITE, 2, 0x23, 0x20,  // 0x20=DE, 0x00=DE+SYNC
+  WRITE, 2, 0xFF, 0x30,
+  WRITE, 2, 0xFF, 0x52,
+  WRITE, 2, 0xFF, 0x00,
+  // END (exit EXTC)
+
+  WRITE, 2, 0x36, 0x09, //default: 0X0a, // 0x09 flipped vertically and horizontally, 0a: default
+												
+  WRITE, 1, 0x11,  // Sleep out
 	
   DELAY, 120,
 	
-	WRITE, 1, 0x29,  // Display on
+  WRITE, 1, 0x29,  // Display on
 
   END_LIST
+	
 };
-
 
 // *************** Init code for 720x720 square ER-TFT3.95-1 from buydisplay (NV3052C controller IC) ***************
 // same as from ecyberspace

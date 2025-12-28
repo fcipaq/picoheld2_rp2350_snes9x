@@ -28,7 +28,7 @@
 
 // Mode 0 software SPI
 // SPI is only used for LCD setup, so no hi speed necessary
-// SW SPI for portability reasons
+// SW SPI because of unsupported 9 bit protocol
 void lcd_spi_send_byte(uint8_t val, int dc) {
   // write command
   gpio_put(PIN_LCD_MOSI, dc == SPI_COMMAND ? 0 : 1);  // 0: cmd; 1: data
@@ -43,18 +43,23 @@ void lcd_spi_send_byte(uint8_t val, int dc) {
       gpio_put(PIN_LCD_MOSI, 0);
       
     val <<= 1;
+    sleep_us(1);
     gpio_put(PIN_LCD_SCK, 1); // rising
+    sleep_us(1);
     gpio_put(PIN_LCD_SCK, 0); // falling
   }
 }
 
 void lcd_spi_send(const uint8_t* init_seq) { 
+  gpio_init(PIN_LCD_SCK);
+  gpio_set_dir(PIN_LCD_SCK, GPIO_OUT);
+
+  gpio_init(PIN_LCD_MOSI);
+  gpio_set_dir(PIN_LCD_MOSI, GPIO_OUT);
+
   gpio_put(PIN_LCD_SCK, 0);
 
   gpio_put(PIN_LCD_CS, 0);  // assert CS
-
-  //lcd_spi_send_byte(0x01); // SW reset
-  //sleep_ms(120);
 
   int pos = 0;
   
@@ -77,7 +82,6 @@ void lcd_spi_send(const uint8_t* init_seq) {
       break;
     }
 
-    
     for (int i = 0; i < n; i++) {
       pos++;
       lcd_spi_send_byte(init_seq[pos], i == 0 ? SPI_COMMAND : SPI_DATA);
@@ -88,6 +92,8 @@ void lcd_spi_send(const uint8_t* init_seq) {
   }
 
   gpio_put(PIN_LCD_CS, 1);  // deassert CS
+
+  gpio_set_dir(PIN_LCD_MOSI, GPIO_IN);
 
 }
 

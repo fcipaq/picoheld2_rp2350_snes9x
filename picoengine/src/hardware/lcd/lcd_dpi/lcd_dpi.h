@@ -148,7 +148,6 @@ class LCD_DPI : public LCD
     int get_screen_bpp() override;
 
     lcd_error_t request_pageflip() override;
-    lcd_error_t refresh() override;
 #if LCD_COLORDEPTH==8
     lcd_error_t get_palette_ptr(color_palette_t* palette_ptr) override;
 #endif

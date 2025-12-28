@@ -126,6 +126,7 @@ typedef struct
    uint8_t  ROMRegion;
    uint8_t  ExtendedFormat;
    uint32_t ROM_Size; // size of *ROM content
+   bool     ROM_is_writable;
 } CMemory;
 
 void ResetSpeedMap(void);

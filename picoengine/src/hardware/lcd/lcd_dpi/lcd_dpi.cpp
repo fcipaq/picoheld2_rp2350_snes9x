@@ -79,7 +79,10 @@ void LCD_DPI::display_wake() {
 void LCD_DPI::display_init() {
   //lcd_spi_send(nv3052c_init_operations);
   //lcd_spi_send(st7701_type1_init_operations);
-  lcd_spi_send(nv3052c_buydisplay_init_operations);
+  //lcd_spi_send(nv3052c_buydisplay_init_operations);
+
+  lcd_spi_send(sunmixic_init_operations);
+  
 }
 
 int LCD_DPI::get_screen_width() {  // todo: make inline
@@ -176,20 +179,6 @@ void LCD_DPI::cycle_bufs() {
    
      //mutex_exit(&mut_update_fb);
     }
-}
-
-lcd_error_t LCD_DPI::refresh() {
-  if (m_refresh_mode == LCD_VRR_REFRESH) {
-    
-    // wait for vsync event
-    sem_acquire_blocking(&dma_tx_done);
-    cycle_bufs();
-    refresh_exec();
-  }
-  else
-    return LCD_RMOD_ERR;
-
-  return LCD_SUCCESS;
 }
 
 void __isr dma_handler() {
@@ -551,32 +540,22 @@ lcd_error_t LCD_DPI::pio_init() {
 }  // m_pio_init
 
 void LCD_DPI::display_start() {
-//  if (us_status.lcd_en == 1)
-//    return;
-  
-  // LCD
+ 
   gpio_init(PIN_LCD_RST);
   gpio_set_dir(PIN_LCD_RST, GPIO_OUT);
-
-  gpio_init(PIN_LCD_SCK);
-  gpio_set_dir(PIN_LCD_SCK, GPIO_OUT);
-
-  gpio_init(PIN_LCD_MOSI);
-  gpio_set_dir(PIN_LCD_MOSI, GPIO_OUT);
+  gpio_put(PIN_LCD_RST, 0);
 
   gpio_init(PIN_LCD_CS);
   gpio_set_dir(PIN_LCD_CS, GPIO_OUT);
 
   gpio_put(PIN_LCD_CS, 1);  // deassert CS
 
-  //gpio_put(PIN_LCD_RST, 1);
-  //sleep_ms(120);
-  gpio_put(PIN_LCD_RST, 0);
   sleep_ms(120);
-//  gpio_put(PIN_LCD_RST, 1);
-//  sleep_ms(120);
+  gpio_put(PIN_LCD_RST, 1);
+  sleep_ms(120);
 
   display_init();
+
 } // start
 
 lcd_error_t LCD_DPI::deinit() {

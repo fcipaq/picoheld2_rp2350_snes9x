@@ -45,7 +45,8 @@ void S9xDeinterleaveType1(int32_t TotalFileSize, uint8_t* base)
    uint8_t *tmp    = NULL;
    int32_t nblocks = TotalFileSize >> 16;
 
-   return;
+   if (!Memory.ROM_is_writable)
+       return;
 
    for (i = 0; i < nblocks; i++)
    {
@@ -92,7 +93,8 @@ void S9xDeinterleaveGD24(int32_t TotalFileSize, uint8_t* base)
    if (TotalFileSize != 0x300000)
       return;
 
-   return;
+   if (!Memory.ROM_is_writable)
+      return;
 
    /* DS2 DMA notes: base may or may not be 32-byte aligned */
    tmp = (uint8_t*) sfe_mem_malloc(0x80000);
@@ -379,66 +381,71 @@ again:
    if ((TotalFileSize & 0x7FF) == 512)
    {
       printf("Skipping header\n");
-      //memmove(Memory.ROM, Memory.ROM + 512, TotalFileSize - 512);
-      TotalFileSize -= 512;
+      if (Memory.ROM_is_writable) {
+        memmove(Memory.ROM, Memory.ROM + 512, TotalFileSize - 512);
+        TotalFileSize -= 512;
+      }
    }
 
    // CheckForIPSPatch(filename, Memory.HeaderCount != 0, &TotalFileSize);
    /* fix hacked games here. */
    if ((strncmp("HONKAKUHA IGO GOSEI", (char*)&Memory.ROM[0x7FC0], 19) == 0) && (Memory.ROM[0x7FD5] != 0x31))
    {
-      //Memory.ROM[0x7FD5] = 0x31;
-      //Memory.ROM[0x7FD6] = 0x02;
+      if (Memory.ROM_is_writable) {
+        Memory.ROM[0x7FD5] = 0x31;
+        Memory.ROM[0x7FD6] = 0x02;
+      }
    }
 
-#define NO_SPEEDHACKS
 #ifndef NO_SPEEDHACKS
-   /* SNESAdvance speed hacks (from the speed-hacks branch of CatSFC) */
-   if (strncmp("YOSHI'S ISLAND", (char *) &Memory.ROM[0x7FC0], 14) == 0)
-   {
-      Memory.ROM[0x0000F4] = 0x42;
-      Memory.ROM[0x0000F5] = 0x3B;
-   }
-   else if (strncmp("SUPER MARIOWORLD", (char *) &Memory.ROM[0x7FC0], 16) == 0)
-   {
-      Memory.ROM[0x00006D] = 0x42;
-   }
-   else if (strncmp("ALL_STARS + WORLD", (char *) &Memory.ROM[0x7FC0], 17) == 0)
-   {
-      Memory.ROM[0x0003D0] = 0x42;
-      Memory.ROM[0x0003D1] = 0x5B;
-      Memory.ROM[0x018522] = 0x42;
-      Memory.ROM[0x018523] = 0x5B;
-      Memory.ROM[0x02C804] = 0x42;
-      Memory.ROM[0x02C805] = 0xBA;
-      Memory.ROM[0x0683B5] = 0x42;
-      Memory.ROM[0x0683B6] = 0x5B;
-      Memory.ROM[0x0696AC] = 0x42;
-      Memory.ROM[0x0696AD] = 0xBA;
-      Memory.ROM[0x089233] = 0xDB;
-      Memory.ROM[0x089234] = 0x61;
-      Memory.ROM[0x0895DF] = 0x42;
-      Memory.ROM[0x0895E0] = 0x5B;
-      Memory.ROM[0x0A7A9D] = 0x42;
-      Memory.ROM[0x0A7A9E] = 0xBA;
-      Memory.ROM[0x1072E7] = 0x42;
-      Memory.ROM[0x1072E8] = 0xD9;
-      Memory.ROM[0x107355] = 0x42;
-      Memory.ROM[0x107356] = 0x5B;
-      Memory.ROM[0x1073CF] = 0x42;
-      Memory.ROM[0x1073D0] = 0x5B;
-      Memory.ROM[0x107443] = 0x42;
-      Memory.ROM[0x107444] = 0x5B;
-      Memory.ROM[0x107498] = 0x42;
-      Memory.ROM[0x107499] = 0x5B;
-      Memory.ROM[0x107505] = 0x42;
-      Memory.ROM[0x107506] = 0x5B;
-      Memory.ROM[0x107539] = 0x42;
-      Memory.ROM[0x10753A] = 0x5B;
-      Memory.ROM[0x107563] = 0x42;
-      Memory.ROM[0x107564] = 0x5B;
-      Memory.ROM[0x18041D] = 0x42;
-      Memory.ROM[0x18041E] = 0x79;
+   if (Memory.ROM_is_writable) {
+      /* SNESAdvance speed hacks (from the speed-hacks branch of CatSFC) */
+      if (strncmp("YOSHI'S ISLAND", (char *) &Memory.ROM[0x7FC0], 14) == 0)
+      {
+         Memory.ROM[0x0000F4] = 0x42;
+         Memory.ROM[0x0000F5] = 0x3B;
+      }
+      else if (strncmp("SUPER MARIOWORLD", (char *) &Memory.ROM[0x7FC0], 16) == 0)
+      {
+         Memory.ROM[0x00006D] = 0x42;
+      }
+      else if (strncmp("ALL_STARS + WORLD", (char *) &Memory.ROM[0x7FC0], 17) == 0)
+      {
+         Memory.ROM[0x0003D0] = 0x42;
+         Memory.ROM[0x0003D1] = 0x5B;
+         Memory.ROM[0x018522] = 0x42;
+         Memory.ROM[0x018523] = 0x5B;
+         Memory.ROM[0x02C804] = 0x42;
+         Memory.ROM[0x02C805] = 0xBA;
+         Memory.ROM[0x0683B5] = 0x42;
+         Memory.ROM[0x0683B6] = 0x5B;
+         Memory.ROM[0x0696AC] = 0x42;
+         Memory.ROM[0x0696AD] = 0xBA;
+         Memory.ROM[0x089233] = 0xDB;
+         Memory.ROM[0x089234] = 0x61;
+         Memory.ROM[0x0895DF] = 0x42;
+         Memory.ROM[0x0895E0] = 0x5B;
+         Memory.ROM[0x0A7A9D] = 0x42;
+         Memory.ROM[0x0A7A9E] = 0xBA;
+         Memory.ROM[0x1072E7] = 0x42;
+         Memory.ROM[0x1072E8] = 0xD9;
+         Memory.ROM[0x107355] = 0x42;
+         Memory.ROM[0x107356] = 0x5B;
+         Memory.ROM[0x1073CF] = 0x42;
+         Memory.ROM[0x1073D0] = 0x5B;
+         Memory.ROM[0x107443] = 0x42;
+         Memory.ROM[0x107444] = 0x5B;
+         Memory.ROM[0x107498] = 0x42;
+         Memory.ROM[0x107499] = 0x5B;
+         Memory.ROM[0x107505] = 0x42;
+         Memory.ROM[0x107506] = 0x5B;
+         Memory.ROM[0x107539] = 0x42;
+         Memory.ROM[0x10753A] = 0x5B;
+         Memory.ROM[0x107563] = 0x42;
+         Memory.ROM[0x107564] = 0x5B;
+         Memory.ROM[0x18041D] = 0x42;
+         Memory.ROM[0x18041E] = 0x79;
+      }
    }
 #endif
 
@@ -450,8 +457,10 @@ again:
    if (Memory.HeaderCount == 0 && !Settings.ForceNoHeader && strncmp((char *) &Memory.ROM [0], "BANDAI SFC-ADX", 14) && ((hi_score > lo_score && ScoreHiROM(true, 0) > hi_score) || (hi_score <= lo_score && ScoreLoROM(true, 0) > lo_score)))
    {
       /* memmove required: Overlapping addresses [Neb] */
-      //memmove(Memory.ROM, Memory.ROM + 512, TotalFileSize - 512);
-      //TotalFileSize -= 512;
+      if (Memory.ROM_is_writable) {
+        memmove(Memory.ROM, Memory.ROM + 512, TotalFileSize - 512);
+        TotalFileSize -= 512;
+      }
    }
 
    Memory.CalculatedSize = TotalFileSize & ~0x1FFF; /* round down to lower 0x2000 */
@@ -613,6 +622,15 @@ again:
       }
       else if(Memory.CalculatedSize == 0x100000 && strncmp ((char *) &Memory.ROM [0xffc0], "WWF SUPER WRESTLEMANIA", 22) == 0)
       {
+         if (Memory.ROM_is_writable) {
+            int32_t cvcount;
+            memcpy(&Memory.ROM[0x100000], Memory.ROM, 0x100000);
+            for(cvcount = 0; cvcount < 16; cvcount++)
+            {
+               memcpy(&Memory.ROM[0x8000 * cvcount], &Memory.ROM[0x10000 * cvcount + 0x100000 + 0x8000], 0x8000);
+               memcpy(&Memory.ROM[0x8000 * cvcount + 0x80000], &Memory.ROM[0x10000 * cvcount + 0x100000], 0x8000);
+            }
+         }
          Memory.LoROM = true;
          Memory.HiROM = false;
       }
@@ -689,7 +707,68 @@ void S9xDeinterleaveMode2(void)
 
 void S9xDeinterleaveType2(bool reset)
 {
- 
+   if (Memory.ROM_is_writable) {
+      uint8_t *tmp;
+      uint8_t blocks [256];
+      int32_t i;
+      int32_t nblocks = Memory.CalculatedSize >> 16;
+      int32_t step = 64;
+
+      while (nblocks <= step)
+         step >>= 1;
+
+      nblocks = step;
+
+      for (i = 0; i < nblocks * 2; i++)
+      {
+         blocks [i] = (i & ~0xF) | ((i & 3) << 2) | ((i & 12) >> 2);
+      }
+
+      tmp = (uint8_t*) malloc(0x10000);
+
+      if (tmp)
+      {
+   #ifdef DS2_DMA
+         __dcache_writeback_all();
+   #endif
+         for (i = 0; i < nblocks * 2; i++)
+         {
+            int32_t j;
+            for (j = i; j < nblocks * 2; j++)
+            {
+               if (blocks [j] == i)
+               {
+                  uint8_t b;
+   #ifdef DS2_DMA
+                  ds2_DMAcopy_32Byte(2 /* channel: emu internal */, tmp, &Memory.ROM [blocks [j] * 0x10000], 0x10000);
+                  ds2_DMA_wait(2);
+                  ds2_DMA_stop(2);
+                  ds2_DMAcopy_32Byte(2 /* channel: emu internal */, &Memory.ROM [blocks [j] * 0x10000], &Memory.ROM [blocks [i] * 0x10000], 0x10000);
+                  ds2_DMA_wait(2);
+                  ds2_DMA_stop(2);
+                  ds2_DMAcopy_32Byte(2 /* channel: emu internal */, &Memory.ROM [blocks [i] * 0x10000], tmp, 0x10000);
+                  ds2_DMA_wait(2);
+                  ds2_DMA_stop(2);
+   #else
+                  /* memmove converted: Different mallocs [Neb] */
+                  memcpy(tmp, &Memory.ROM [blocks [j] * 0x10000], 0x10000);
+                  /* memmove converted: Different addresses, or identical if blocks[i] == blocks[j] [Neb] */
+                  memcpy(&Memory.ROM [blocks [j] * 0x10000], &Memory.ROM [blocks [i] * 0x10000], 0x10000);
+                  /* memmove converted: Different mallocs [Neb] */
+                  memcpy(&Memory.ROM [blocks [i] * 0x10000], tmp, 0x10000);
+   #endif
+                  b          = blocks [j];
+                  blocks [j] = blocks [i];
+                  blocks [i] = b;
+                  break;
+               }
+            }
+         }
+         free(tmp);
+         tmp = NULL;
+      }
+   }
+
    if (reset)
    {
       InitROM(false);
@@ -925,12 +1004,6 @@ void InitROM(bool Interleaved)
       }
       else
          LoROMMap();
-   }
-
-   if (Memory.SRAMSize > 5)
-   {
-      printf("WARNING: SRAM was reduced to 64K by me. If you see this message, tell me about it.\n");
-      Memory.SRAMSize = 5;
    }
 
    if (Settings.BS)
