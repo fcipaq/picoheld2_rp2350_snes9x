@@ -654,7 +654,7 @@ void LCD_DPI::build_fb_rot_lut() {
     }
 
     // repeat m_lcd_scale times
-    for (int i = (1u << m_dma_ring_buffer_size) / m_lcd_scale; i < (1u << m_dma_ring_buffer_size); i++) {
+    for (int i = (1u << m_dma_ring_buffer_size) / m_lcd_scale; i < (1u << m_dma_ring_buffer_size) - 1; i++) {
       uint16_t index1 = (i + ofs) % (1u << m_dma_ring_buffer_size);
       uint16_t index2 = ((i % ((1u << m_dma_ring_buffer_size) / m_lcd_scale)) % ((1u << m_dma_ring_buffer_size) / m_lcd_scale) + ofs) % (1u << m_dma_ring_buffer_size);
       m_fb_rlut[index1] = m_fb_rlut[index2];

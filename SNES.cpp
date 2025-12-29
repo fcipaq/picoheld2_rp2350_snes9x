@@ -66,10 +66,9 @@ int just_saved = 0;
 int _sd_init = 0;
 mutex_t audio_generate;
 
-
 // sound
 #define NUM_ADUDIO_BUF (3)
-#define AUDIO_SAMPLE_RATE (32000)
+#define AUDIO_SAMPLE_RATE (16000)  // 32000 is (of course) slower
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
 volatile int volume = 1;
 int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE / 47] __attribute__((aligned(4))); // 4 kb
@@ -365,7 +364,7 @@ void core1task() {
 
   int cur_audio_buf = 0;
 
-  int buffer_length = AUDIO_SAMPLE_RATE / target_fps * 1.04;  // add some margin to prevent crackling
+  int buffer_length = AUDIO_SAMPLE_RATE / target_fps * 1.02;  // add some margin to prevent crackling
 
   while (1) {
     while (!mutex_try_enter(&audio_generate, NULL))
