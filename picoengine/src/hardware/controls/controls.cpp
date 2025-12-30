@@ -61,21 +61,19 @@ keymap_t keymap[NUM_BTNS] = {
     { BUTTON_Y,     PIN_BTN_Y,   BTN_DIGITAL, BTN_RELEASED, BUTTON_PULL_MODE, BTN_NO_THRESHOLD, BTN_NO_THRESHOLD,     BTN_PRESSED_ON_LO, BTN_TIMER_ZERO}, 
     { BUTTON_ST,    PIN_BTN_ST,  BTN_DIGITAL, BTN_RELEASED,     BTN_PULLDOWN, BTN_NO_THRESHOLD, BTN_NO_THRESHOLD,     BTN_PRESSED_ON_HI, BTN_TIMER_ZERO}, 
     { BUTTON_SEL,   PIN_BTN_SEL, BTN_DIGITAL, BTN_RELEASED, BUTTON_PULL_MODE, BTN_NO_THRESHOLD, BTN_NO_THRESHOLD,     BTN_PRESSED_ON_LO, BTN_TIMER_ZERO}, 
-//    { BUTTON_L,     PIN_BTN_L,   BTN_DIGITAL, BTN_RELEASED, BUTTON_PULL_MODE, BTN_NO_THRESHOLD, BTN_NO_THRESHOLD,     BTN_PRESSED_ON_LO, BTN_TIMER_ZERO}, 
-    { BUTTON_L,     PIN_BTN_L,   BTN_ANALOG,  BTN_RELEASED,       BTN_PULLUP,                0,              500,            -1,         BTN_TIMER_ZERO}, 
+    { BUTTON_L,     PIN_BTN_L,   BTN_ANALOG,  BTN_RELEASED,       BTN_PULLUP,                0,              500,                    -1, BTN_TIMER_ZERO}, 
     { BUTTON_R,     PIN_BTN_R,   BTN_DIGITAL, BTN_RELEASED, BUTTON_PULL_MODE, BTN_NO_THRESHOLD, BTN_NO_THRESHOLD,     BTN_PRESSED_ON_LO, BTN_TIMER_ZERO}, 
-//    { BUTTON_SW,    PIN_BTN_SW,  BTN_DIGITAL, BTN_RELEASED, BUTTON_PULL_MODE, BTN_NO_THRESHOLD, BTN_NO_THRESHOLD,     BTN_PRESSED_ON_LO, BTN_TIMER_ZERO}, 
-    { BUTTON_SW,    PIN_BTN_SW,  BTN_ANALOG,   BTN_RELEASED,      BTN_PULLUP,                0,              500,            -1, BTN_TIMER_ZERO}, 
+    { BUTTON_SW,    PIN_BTN_SW,  BTN_ANALOG,   BTN_RELEASED,      BTN_PULLUP,                0,              500,                    -1, BTN_TIMER_ZERO}, 
 
-    { BUTTON_LEFT,  PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1450,           -1, BTN_TIMER_ZERO}, 
-    { BUTTON_RIGHT, PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2250,              4095,           -1, BTN_TIMER_ZERO}, 
-    { BUTTON_UP,    PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1450,           -1, BTN_TIMER_ZERO}, 
-    { BUTTON_DOWN,  PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2250,              4095,           -1, BTN_TIMER_ZERO}, 
+    { BUTTON_LEFT,  PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1450,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_RIGHT, PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2250,              4095,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_UP,    PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1450,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_DOWN,  PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2250,              4095,                   -1, BTN_TIMER_ZERO}, 
 /*
-    { BUTTON_LEFT,  PIN_ANALOG_Y, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,               0,               1000,           -1, BTN_TIMER_ZERO}, 
-    { BUTTON_RIGHT, PIN_ANALOG_Y, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             3000,              4095,           -1, BTN_TIMER_ZERO}, 
-    { BUTTON_UP,    PIN_ANALOG_X, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             3000,              4095,           -1, BTN_TIMER_ZERO}, 
-    { BUTTON_DOWN,  PIN_ANALOG_X, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1000,           -1, BTN_TIMER_ZERO}, 
+    { BUTTON_LEFT,  PIN_ANALOG_Y, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,               0,               1000,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_RIGHT, PIN_ANALOG_Y, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             3000,              4095,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_UP,    PIN_ANALOG_X, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             3000,              4095,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_DOWN,  PIN_ANALOG_X, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1000,                   -1, BTN_TIMER_ZERO}, 
 */
 };
 

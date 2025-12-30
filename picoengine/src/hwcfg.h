@@ -21,14 +21,13 @@
 #ifndef HWCFG_H
 #define HWCFG_H
 
-// 9 = DPI Pimoroni PGA2350 w/ Startek display
-// 10 = P2 w/ Buydisplay display
+// 0 = P2 w/ SumixIC display
 
 #ifndef PPL_CONFIG_NO
-#define PPL_CONFIG_NO 10
+#define PPL_CONFIG_NO 0
 #endif
 
-#if PPL_CONFIG_NO==10
+#if PPL_CONFIG_NO==0
 // ================================== CONFIG 10 (P2) ============================================
 
 /*----------------- buttons --------------- */

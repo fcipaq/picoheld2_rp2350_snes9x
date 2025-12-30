@@ -18,8 +18,7 @@
  *
  */
   
-#ifndef PICOENGINE_H
-#define PICOENGINE_H
+#pragma once
 
 /* ========================== includes ========================== */
 // HAL
@@ -50,35 +49,4 @@
 #define PE_UNKNOWN_ERROR    -1
 
 /* ====================== init ====================== */
-int pe_init(pe_config_t pe_cfg) {
-  ctrl_init();
-  
-  bool bl_req = bl_check_selection();
-
-  if (bl_req)
-    bl_launch_bl();
-
-
-//  if (lcd_init(pe_cfg.lcd_num_fb, pe_cfg.lcd_refresh_mode, pe_cfg.lcd_scale) != LCD_SUCCESS)
-//    return PE_UNKNOWN_ERROR;
-
-/*
-  if ((lcd_init() != LCD_SUCCESS) && (!bl_req))
-    return PE_UNKNOWN_ERROR;
-
-  if (bl_req)
-    bl_menu();
-
-#ifndef PE_SND_INIT_MANUAL
-  if (snd_init() != SND_SUCCESS)
-    return PE_UNKNOWN_ERROR;
-#endif
-*/
-
-  if (pwr_init() != 0)
-    return PE_UNKNOWN_ERROR;
-  
-  return PE_SUCCESS;
-}
-
-#endif // BLITTER
+int pe_init(pe_config_t pe_cfg);

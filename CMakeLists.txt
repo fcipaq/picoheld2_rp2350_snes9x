@@ -51,6 +51,7 @@ pico_enable_stdio_usb(SNES 1)
 target_link_libraries(SNES
         pico_stdlib
         snes9x_rp2350
+        emumgr
         picoengine
         pico_fatfs
 		sparkfun_pico)
@@ -79,6 +80,7 @@ add_subdirectory(snes9x)
 add_subdirectory(picoengine)
 add_subdirectory(sparkfun_pico)
 add_subdirectory(pico_fatfs)
+add_subdirectory(emumgr)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")

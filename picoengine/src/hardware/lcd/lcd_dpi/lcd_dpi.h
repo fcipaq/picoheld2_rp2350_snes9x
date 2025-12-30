@@ -38,6 +38,9 @@
 #define NUM_FB_MAX (3)  // triple buffering (at most)
 #define LCD_DMA_IRQ (0)  // 0 or 1
 
+#define SNES_WIDTH_LOCAL (256)
+#define SNES_HEIGHT_LOCAL (224)
+
 class LCD_DPI : public LCD
 {
   private:   

@@ -2,8 +2,6 @@
 4 kb ram free
 
 */
-#include "tf_card.h"
-#include "ff.h"
 
 #include <picoengine.h>
 #include <fonts/fontfiles/f13x16.h>
@@ -31,6 +29,8 @@ extern "C" {
 #include "hwcfg.h"
 #include "controls.h"
 
+#include "emumgr.h"
+
 extern "C" {
 #include "snes9x/snes9x.h"
 #include "snes9x/soundux.h"
@@ -51,19 +51,16 @@ LCD_DPI lcd = LCD_DPI();
 #endif
 
 int brightness = 64;
+gbuffer_t fb_back;
+
 /* ---------- LCD END ------------*/
 
 // snes stuff
 bool overclock_cycles = false;
 int one_c = 4, slow_one_c = 5, two_c = 6;
 extern SGFX GFX;  // snes9x API
-char* savestate_name;// = "save.sav";  // short file name dos
-volatile int target_fps;
 
-// save state
-uint32_t just_saved_timer;
-int just_saved = 0;
-int _sd_init = 0;
+volatile int target_fps;
 mutex_t audio_generate;
 
 // sound
@@ -71,148 +68,13 @@ mutex_t audio_generate;
 #define AUDIO_SAMPLE_RATE (16000)  // 32000 is (of course) slower
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
 volatile int volume = 1;
+#ifdef AUDIO_ENABLE
 int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE / 47] __attribute__((aligned(4))); // 4 kb
+#endif
 
 // --- MAIN
 static void update_keymap(int id)
 {
-}
-
-static bool screenshot_handler(const char *filename, int width, int height)
-{
-    //return rg_display_save_frame(filename, currentUpdate, width, height);
-    return true;
-}
-
-static bool save_state_handler(char *filename)
-{
-  char filename_local[ROM_NAME_LEN + 2];
-
-  filename_local[0] = '/';
-  memcpy(&filename_local[1], filename, ROM_NAME_LEN);
-  filename_local[ROM_NAME_LEN + 1] = 0;
-
-  bool ret = false;
-#if MICROSD
-  File savestate_file;
-
-  printf("Savestate handler called...\n\n");
-
-  if (!_sd_init) {
-    if (!SD.begin(PIN_SD_CS, SPI, SD_SPI_SPEED)) {
-      printf("Unable to init SD card\n");
-      goto bailout;
-    }
-
-    _sd_init = 1;
-  }
-
-  if (SD.exists(filename)) {
-    if (!SD.remove(filename)) {
-      printf("Unable to delete game state file\n");
-      goto bailout;
-    }
-  }
-
-  savestate_file = SD.open(filename_local, FILE_WRITE);
-
-  if (!savestate_file) {
-    printf("Unable to open save state file for writing.\n\n");
-    goto bailout;
-  }
-
-  savestate_file.write((uint8_t*) &CPU, sizeof(CPU));
-  savestate_file.write((uint8_t*) &ICPU, sizeof(ICPU));
-  savestate_file.write((uint8_t*) &PPU, sizeof(PPU));
-  savestate_file.write((uint8_t*) &DMA, sizeof(DMA));
-  savestate_file.write((uint8_t*) Memory.VRAM, VRAM_SIZE);
-  savestate_file.write((uint8_t*) Memory.RAM, RAM_SIZE);
-  savestate_file.write((uint8_t*) Memory.SRAM, SRAM_SIZE);
-  savestate_file.write((uint8_t*) Memory.FillRAM, FILLRAM_SIZE);
-  savestate_file.write((uint8_t*) &APU, sizeof(APU));
-  savestate_file.write((uint8_t*) &IAPU, sizeof(IAPU));
-  savestate_file.write((uint8_t*) IAPU.RAM, 0x10000);
-  savestate_file.write((uint8_t*) &SoundData, sizeof(SoundData));
-
-  savestate_file.close();
-
-  printf("Game state saved.\n\n");
-
-  ret = true;
-  
-  bailout:
-  
-  if (ret)
-    just_saved = 1;
-  else
-    just_saved = 2;
-
-  just_saved_timer = millis();
-#endif
-
-  return ret;
-}
-
-static bool load_state_handler(char *filename)
-{
-  char filename_local[ROM_NAME_LEN + 2];
-
-  filename_local[0] = '/';
-  memcpy(&filename_local[1], filename, ROM_NAME_LEN);
-  filename_local[ROM_NAME_LEN + 1] = 0;
-
-  printf("Loadstate handler called...\n\n");
-
-#if MICROSD
-  if (!_sd_init) {
-    if (!SD.begin(PIN_SD_CS, SPI, 10000000)) {
-      printf("Unable to init SD card\n\n");
-      just_saved_timer = millis();
-      just_saved = 2;
-      return false;
-    }
-
-    _sd_init = 1;
-  }
-
-  File readstate_file = SD.open(filename_local, FILE_READ);
-
-  if (!readstate_file) {
-    printf("Failed to load game state:\n");
-    printf("*\n");
-    printf(filename_local);
-    printf("*\n");
-    just_saved_timer = millis();
-    just_saved = 2;
-    return false;
-  }
-
-  S9xReset();
-
-  // At this point we can't go back and a failure will corrupt the state anyway
-  printf("Now reading to memory.\n");
-
-  readstate_file.read((uint8_t*) &CPU, sizeof(CPU));
-  readstate_file.read((uint8_t*) &ICPU, sizeof(ICPU));
-  readstate_file.read((uint8_t*) &PPU, sizeof(PPU));
-  readstate_file.read((uint8_t*) &DMA, sizeof(DMA));
-  readstate_file.read((uint8_t*) Memory.VRAM, VRAM_SIZE);
-  readstate_file.read((uint8_t*) Memory.RAM, RAM_SIZE);
-  readstate_file.read((uint8_t*) Memory.SRAM, SRAM_SIZE);
-  readstate_file.read((uint8_t*) Memory.FillRAM, FILLRAM_SIZE);
-  readstate_file.read((uint8_t*) &APU, sizeof(APU));
-  readstate_file.read((uint8_t*) &IAPU, sizeof(IAPU));
-  readstate_file.read((uint8_t*) IAPU.RAM, 0x10000);
-  readstate_file.read((uint8_t*) &SoundData, sizeof(SoundData));
-  
-  readstate_file.close();
-
-  printf("Game state loaded.\n");
-
-  return S9xLoadState();
-#else
-  return false;
-#endif
 }
 
 uint32_t timer_str_ld = 0;
@@ -273,7 +135,6 @@ uint8_t Screen[SNES_WIDTH * SNES_HEIGHT_EXTENDED * 2];
 bool S9xInitDisplay(void)
 {
 #ifdef LCD_ENABLE
-    gbuffer_t fb_back;
     lcd.get_backbuffer(&fb_back);
     GFX.Screen = (uint8_t*) fb_back.data;
 #else
@@ -392,95 +253,6 @@ uint32_t micros() {
   return to_us_since_boot(get_absolute_time());
 }
 
-int sd_init() {
-    int ret = 0;
-
-    FATFS fs;
-    FIL fil;
-    FRESULT fr;     /* FatFs return code */
-    UINT br;
-    UINT bw;
-
-    // modify below if customized configuration is needed
-    pico_fatfs_spi_config_t config = {
-        spi0,  // if unmatched SPI pin assignments with spi0/spi1 or explicitly designated as NULL, SPI PIO will be configured 
-        CLK_SLOW_DEFAULT,
-        150000000 / 4, //CLK_FAST_DEFAULT,
-        PIN_SD_MISO,  // SPIx_RX
-        PIN_SD_CS,
-        PIN_SD_SCK,   // SPIx_SCK
-        PIN_SD_MOSI,  // SPIx_TX
-        true   // use internal pullup
-    };
-
-    bool spi_configured = pico_fatfs_set_config(&config);
-
-    if (!spi_configured)
-      emu_panic("sd spi failed");
-    for (int i = 0; i < 2; i++) {
-      fr = f_mount(&fs, "", 1);
-      //fr = f_mount(NULL, "", 1);  // unmount
-      if (fr == FR_OK)
-        break;
-      printf("mount failed: %d retrying.\n", (int) fr);
-      pwr_sd_sply(0);
-      sleep_ms(1000);
-      pwr_sd_sply(1);
-      sleep_ms(1000);
-      pico_fatfs_reboot_spi();
-    }
-
-    if (fr != FR_OK)
-      return false;
-
-    printf("mount complete\n");
-
-  //fr = f_open(&fil, "bench.dat", FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
-  fr = f_open(&fil, "rom.bin", FA_READ);
-
-  if (fr != FR_OK) {
-      printf("open file failed: %d\n", (int) fr);
-      //emu_panic("open file failed");
-      return -1;
-  }
-  
-  printf("open complete\n");
-
-  //fr = f_write(&fil, test_str, 17, &bw);
-  #define READ_LEN (2048)
-  uint32_t unread_bytes = f_size(&fil);
-  uint8_t* buf = (uint8_t*) sfe_mem_malloc(unread_bytes);
-
-  if (!buf) {
-    printf("unable to get buffer (%d bytes).\n", unread_bytes);
-    ret = -1;
-    goto bailout;
-  }
-
-  printf("Got buffer (%d bytes).\n", unread_bytes);
-
-  Memory.ROM = buf;
-  Memory.ROM_Size = unread_bytes;
-
-  while (unread_bytes) {
-    UINT bytes_read;
-    fr = f_read (&fil, buf, READ_LEN, &bytes_read);
-    buf += bytes_read;
-    unread_bytes -= bytes_read;
-    if ((fr != FR_OK) && unread_bytes) {
-      printf("read error occured\n");
-      ret = -2;
-      goto bailout;
-    }
-  }
-
-bailout:
-
-  f_close(&fil);
-
-  return ret;
-}
-
 void setup(void) {
   int ret;
 
@@ -501,6 +273,9 @@ void setup(void) {
   gpio_set_function(PIN_SD_CS_RX /* RX */, GPIO_FUNC_UART);
   gpio_set_function(PIN_SD_MISO_TX /* TX */, GPIO_FUNC_UART);
 #endif
+
+  // power up SD card
+  pwr_sd_sply(1);
 
   if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 70000000)) {  //70  // Pimoroni can do 90 - why?
     emu_panic("sfe error\n");
@@ -573,21 +348,10 @@ int main(void)
     if (!S9xInitGFX())
         emu_panic("Graphics init failed!\n");
 
-//  Memory.ROM = (uint8_t*) ROM_DATA;
-//  Memory.ROM_Size = ROM_SIZE;
-  Memory.ROM_is_writable = true;
+  emumgr_menu(fb_back);
 
-  printf("sd_init\n");
-  sd_init();
-
-  if (!LoadROM(NULL))
-    emu_panic("ROM loading failed!\n");
- 
   target_fps = 50;//Memory.ROMFramesPerSecond;
   int frame_time = 1000000 / target_fps;
-
-  savestate_name = (char*) Memory.ROMName;
-  load_state_handler(savestate_name);  // try and load a saved state
 
 #ifdef USE_BLARGG_APU
     S9xSetSamplesAvailableCallback(S9xAudioCallback);
@@ -609,8 +373,6 @@ int main(void)
     // battery
     uint32_t bat_volt = 0;
     uint32_t bat_volt_cnt = 0;
-
-    gbuffer_t fb_back;
 
     printf("Starting emulation.\n");
 
@@ -684,17 +446,6 @@ int main(void)
       } else {
       font_write_string(11, 11 + 45, 0x0, "BAT", (font_t*) font_13x16, fb_back);
       font_write_string(10, 10 + 45, 0xffff, "BAT", (font_t*) font_13x16, fb_back);
-      }
-
-      if (just_saved) {
-        uint16_t* scr = (uint16_t*) GFX.Screen;
-        uint16_t col = just_saved == 1 ? 0b0000011111100000 : 0b1111100000000000;
-        for (int x = 230; x < 240; x++)
-          for (int y = 12; y < 22; y++) {
-            scr[x + y * SNES_WIDTH] = col;
-          }
-        if (millis() - just_saved_timer > 2000)
-          just_saved = 0;
       }
     }
 

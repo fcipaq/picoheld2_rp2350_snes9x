@@ -70,6 +70,7 @@ set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/src/hardware/sound/snd_pio
 pico_generate_pio_header(picoengine ${CMAKE_CURRENT_LIST_DIR}/src/hardware/sound/snd_pio.pio)
 
 target_sources(picoengine INTERFACE
+	  ${CMAKE_CURRENT_LIST_DIR}/src/picoengine.cpp
 	  ${CMAKE_CURRENT_LIST_DIR}/src/hardware/bootloader/bootloader.cpp
 	  ${CMAKE_CURRENT_LIST_DIR}/src/hardware/sound/sound.cpp
 	  ${CMAKE_CURRENT_LIST_DIR}/src/hardware/lcd/backlight/backlight.cpp
