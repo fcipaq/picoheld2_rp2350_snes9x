@@ -41,6 +41,7 @@ uint16_t       gbuf_get_height(gbuffer8_t buf);
 uint16_t       gbuf_get_height(gbuffer16_t buf);
 gbuf_results_t gbuf_alloc(gbuffer8_t* buf, uint16_t width, uint16_t height);
 gbuf_results_t gbuf_alloc(gbuffer16_t* buf, uint16_t width, uint16_t height);
+gbuf_results_t gbuf_create(gbuffer16_t* buf, uint16_t width, uint16_t height, void* data_buffer);
 color8_t*      gbuf_get_dat_ptr(gbuffer8_t buf);
 color16_t*     gbuf_get_dat_ptr(gbuffer16_t buf);
 void           gbuf_free(gbuffer8_t buf);

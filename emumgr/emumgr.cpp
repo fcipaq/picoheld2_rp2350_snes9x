@@ -27,7 +27,7 @@
 
 /* Pico Held hw library */
 #include <picoengine.h>
-#include <fonts/fontfiles/pixelmix_14_16.h>
+#include <fonts/fontfiles/f8x11.h>
 
 #include "hardware/flash.h"
 #include "pico/bootrom.h"
@@ -52,13 +52,29 @@ extern "C" {
 #include "sparkfun_pico/sfe_pico.h"
 }
 
+uint32_t millis();
+uint32_t micros();
+
+typedef struct 
+{
+  char* buffer;
+  int item_cnt;
+} dir_list_t;
+
 /* ====================================================== variables ====================================================== */
+extern LCD_DPI lcd;
 FATFS fs_handle;
 bool m_sd_init = false;
 /* ====================================================== end variables ====================================================== */
 
 #define MENU_FONT pixelmix_14_16
 //#define MENU_FONT font_13x16
+
+#define MENU_REPEAT_START (500)
+#define MENU_REPEAT_DELAY (100)
+
+#define MENU_MAX_ITEMS (100)
+#define MENU_MAX_DIR_ITEMS (100)
 
 #define SAVESTATE_DIRECTORY "/roms/snes/save/"
 #define ROM_DIRECTORY "/roms/snes/"
@@ -72,26 +88,27 @@ bool m_sd_init = false;
 #define SELECTION_DELAY 200
 #define SELECTION_DELAY_ROMLIST 10
 
-#define MENU_LST ("")
+#define MENU_LST "\xff"
+
 const char* confirm_menu_items_overwrite[] = { STR_CONFIRM_OVERWRITE,
-                                                       STR_YES,
-                                                       STR_NO,
-                                                       MENU_LST };
+                                               STR_YES,
+                                               STR_NO,
+                                               MENU_LST };
 
 const char* confirm_menu_items_bl[] = { STR_CONFIRM_BL,
                                                 STR_YES,
                                                 STR_NO,
                                                 MENU_LST };
 
-const char* main_menu_items[] = { STR_MAIN_TITLE,
-															                               STR_LAUNCH,
-                                                             STR_LOAD,
-                                                             STR_SAVE,
-                                                             STR_SEL_ROM,
-                                                             STR_SOUND,
-                                                             STR_BRIGHTNESS,
-                                                             STR_OPTIONS,
-                                                             MENU_LST  };
+const char main_menu_items[] = { STR_MAIN_TITLE"\0"\
+					 									     STR_LAUNCH"\0"\
+                                 STR_LOAD"\0"\
+                                 STR_SAVE"\0"\
+                                 STR_SEL_ROM"\0"\
+                                 STR_SOUND"\0"\
+                                 STR_BRIGHTNESS"\0"\
+                                 STR_OPTIONS"\0"\
+                                 MENU_LST };
 
 const char* opt_menu_items[] = { STR_OPTIONS_MENU,
                                                            STR_BUTTONS,
@@ -167,7 +184,7 @@ const char* message_save[MSG_SAVE_NUM_ROWS] = { STR_SAVING_GAME_STATE,
 const char* message_error[MSG_ERROR_NUM_ROWS] = { STR_ERROR };
 
 int message(char* s) {
-  
+  return 0;
 };
 
 int sd_deinit() {
@@ -977,13 +994,243 @@ bool loadstate(int num) {
 
 
 /* ----------------------- main function -----------------------*/
+char* get_item(int item, char* buffer) {
+  int pos = 0;
+  int cur_entry = 0;
+
+  while (item != cur_entry) {
+
+    while (1) {
+      pos++;
+      if (buffer[pos] == 0) {
+        pos++;
+        break;
+      }
+    }
+
+    cur_entry++;
+
+  }
+
+  return &buffer[pos];
+}
+
+
+int get_item_cnt(char* buffer) {
+  int pos = 0;
+  int cur_entry = 0;
+
+  while (1) {
+
+    while (1) {
+      pos++;
+      if (buffer[pos] == 0) {
+        break;
+      }
+      if (buffer[pos] == 255)
+        return cur_entry;
+    }
+
+    cur_entry++;
+
+  }
+
+}
+
+int get_directory(const char *path, dir_list_t* directory) {
+    FRESULT res;
+    DIR dir;
+    FILINFO fno;
+
+    int buf_pos = 0;
+    directory->item_cnt = 0;
+
+    res = f_opendir(&dir, path);                   /* Open the directory */
+    if (res == FR_OK) {
+        for (;;) {
+            res = f_readdir(&dir, &fno);           /* Read a directory item */
+            if ((fno.fname[0] == 0) || (directory->item_cnt >= MENU_MAX_DIR_ITEMS)) break;          /* Error or end of dir/RAM */
+            if (!(fno.fattrib & AM_DIR)) {
+                strcpy(&directory->buffer[buf_pos], fno.fname);
+                buf_pos += strlen(fno.fname) + 1;
+                directory->item_cnt++;
+            }
+        }
+        f_closedir(&dir);
+    } else {
+        printf("Failed to open \"%s\". (%u)\n", path, res);
+    }
+
+    directory->buffer[buf_pos] = 255;  // MENU_LST
+
+    return res;
+}
+
+
+
+int selection_menu(char* item_list, gbuffer_t fb) {
+  color_t color_shadow = 0xffff;
+  float menu_caption_offset = 1.2;
+  int menu_offset_x = 20;
+  int menu_offset_y = 20;
+  int menu_width = SNES_WIDTH - 2 * menu_offset_x;
+  int menu_height = SNES_HEIGHT - 2 * menu_offset_y;
+  font_t* menu_font = (font_t*) font_8x11;
+  int menu_items_clearance_y = 5;
+  int max_vis_items = (menu_height - (font_get_height(menu_font) + menu_items_clearance_y) * menu_caption_offset) / (font_get_height(menu_font) + menu_items_clearance_y);
+    
+  gbuffer_t fb_back;
+
+  int b_debounce = 0;
+  int b_debounce_timer = 0;
+  int b_repeater = 0;
+
+  int cur_itm = 0;
+  int ofs_itm = 0;
+  int num_itms = get_item_cnt(item_list) - 1;  // minus the caption
+  if (num_itms < max_vis_items)
+    max_vis_items = num_itms;
+  
+  while (1) {
+    lcd.get_backbuffer(&fb_back);
+    draw_rect_fill(menu_offset_x, menu_offset_y, menu_offset_x + menu_width, menu_offset_y + menu_height, 0xaffe, fb_back);
+    
+    // caption
+    font_write_string_centered(menu_offset_x + menu_width / 2, menu_offset_y, 0x0, get_item(0, item_list), menu_font, fb_back);
+
+    for (int i = 0; i < max_vis_items; i++) {
+      
+      // scrolling offset
+      if (cur_itm >= ofs_itm + max_vis_items)
+        ofs_itm++;
+
+      if (cur_itm < ofs_itm)
+        ofs_itm--;
+
+      color_t font_color = (i + ofs_itm) == cur_itm ? 0xdead : 0x0;
+      font_write_string(menu_offset_x, menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), font_color, get_item(i + 1 + ofs_itm, item_list) , menu_font, fb_back);
+
+    }
+
+    // scroll arrows to indicate additional items
+    int scrl_up_arrow_y = menu_offset_y + menu_caption_offset * (font_get_height(menu_font) + menu_items_clearance_y);
+    int scrl_down_arrow_y = menu_offset_y + menu_height - 10;
+
+    int total_range_y = scrl_down_arrow_y - scrl_up_arrow_y - 2 * (font_get_height(menu_font) + menu_items_clearance_y);
+    float scrl_pcnt =  (float) ofs_itm / (float) (num_itms - max_vis_items);
+
+    if (num_itms > max_vis_items * 3) {
+      // When there is a great number of items (like in a directory)
+      // use a position indicator
+
+      // position indicator
+      font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y + (font_get_height(menu_font) + menu_items_clearance_y) + total_range_y * scrl_pcnt, 0x0, 'O', menu_font, fb_back);
+
+      // arrow up
+      font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y, 0x0, 'A', menu_font, fb_back);
+      
+      // arrow down
+      font_put_char(menu_offset_x + menu_width - 10, scrl_down_arrow_y, 0x0, 'V', menu_font, fb_back);
+    } else if (num_itms > max_vis_items) {
+      // When there is only a small number of items
+      // just use arrows to indicate there are more items you can scroll to
+      
+      // arrow up
+      if (ofs_itm > 0)
+        font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y, 0x0, 'A', menu_font, fb_back);
+
+      // arrow down
+
+      if (ofs_itm + max_vis_items < num_itms)
+        font_put_char(menu_offset_x + menu_width - 10, scrl_down_arrow_y, 0x0, 'V', menu_font, fb_back);
+
+    }
+
+    ctrl_button_state_update();
+
+    // return selected item
+    if (ctrl_is_pressed(BUTTON_A) ||
+        ctrl_is_pressed(BUTTON_ST))
+      return cur_itm;
+
+    // report user requested cancellation
+    if (ctrl_is_pressed(BUTTON_B) ||
+        ctrl_is_pressed(BUTTON_X) ||
+        ctrl_is_pressed(BUTTON_Y))
+      return -1;
+
+    if (ctrl_is_pressed(BUTTON_DOWN) && !b_debounce && (cur_itm < (num_itms - 1)))
+      cur_itm++;
+
+    if (ctrl_is_pressed(BUTTON_UP) && !b_debounce && (cur_itm > 0))
+      cur_itm--;
+
+    if (!ctrl_is_pressed(BUTTON_DOWN) &&
+        !ctrl_is_pressed(BUTTON_UP) &&
+        !ctrl_is_pressed(BUTTON_A) &&
+        !ctrl_is_pressed(BUTTON_B) &&
+        !ctrl_is_pressed(BUTTON_X) &&
+        !ctrl_is_pressed(BUTTON_Y) &&
+        !ctrl_is_pressed(BUTTON_ST) &&
+        !ctrl_is_pressed(BUTTON_SEL)) {
+      b_debounce = 0;
+      b_repeater = 0;
+    } else {
+      if (b_debounce == 0) {
+        b_debounce = 1;
+        b_debounce_timer = millis();
+      } else if ((millis() - b_debounce_timer > MENU_REPEAT_START) && !b_repeater) {
+        b_repeater = 1;
+        b_debounce = 0;
+        b_debounce_timer = millis();         
+      } else if ((millis() - b_debounce_timer > MENU_REPEAT_DELAY) && b_repeater) {
+        b_debounce = 0;
+        b_debounce_timer = millis();         
+      }
+    }
+
+    lcd.request_pageflip();
+  }
+
+  do {
+    sleep_ms(50);
+    ctrl_button_state_update();
+  } while(ctrl_is_pressed(BUTTON_DOWN) ||
+          ctrl_is_pressed(BUTTON_UP) ||
+          ctrl_is_pressed(BUTTON_LEFT) ||
+          ctrl_is_pressed(BUTTON_RIGHT) ||
+          ctrl_is_pressed(BUTTON_A) ||
+          ctrl_is_pressed(BUTTON_B) ||
+          ctrl_is_pressed(BUTTON_X) ||
+          ctrl_is_pressed(BUTTON_Y) ||
+          ctrl_is_pressed(BUTTON_ST) ||
+          ctrl_is_pressed(BUTTON_SEL));
+
+}
 
 void emumgr_menu(gbuffer_t fb) {
+
+  gbuffer_t fb_saved;
+
+  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS)
+    message("error: no psram");
+
+  // save original screen contents
+  blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_saved);
+
   sd_init();
+
+  dir_list_t directory;
+  directory.buffer = (char*) sfe_mem_malloc(MENU_MAX_DIR_ITEMS * 256);
+  
+  selection_menu((char*) directory.buffer, fb);
 
   load_rom();
 
   if (!LoadROM(NULL))
     message("ROM loading failed!\n");
- 
+
+  if (fb_saved.data)
+    sfe_mem_free(fb_saved.data);
+
 }

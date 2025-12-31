@@ -70,6 +70,22 @@ gbuf_results_t gbuf_alloc(gbuffer16_t* buf, uint16_t width, uint16_t height) {
   return BUF_SUCCESS;
 }
 
+gbuf_results_t gbuf_create(gbuffer16_t* buf, uint16_t width, uint16_t height, void* data_buffer) {
+  if (data_buffer == NULL)
+    return BUF_ERR_NO_RAM;
+
+  buf->data = (uint16_t*) data_buffer;
+
+  for (uint32_t i = 0; i < width * height; i++)
+    buf->data[i] = 0;
+
+  buf->width = width;
+  buf->height = height;
+  buf->bitdepth = 16;
+
+  return BUF_SUCCESS;
+}
+
 color8_t* gbuf_get_dat_ptr(gbuffer8_t buf) {
   return buf.data;
 }
