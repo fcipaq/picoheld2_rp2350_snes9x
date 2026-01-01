@@ -27,7 +27,7 @@
 // Ö d6, ö f6
 // ß df
 
-#define STR_MAIN_TITLE "Pico Held Gwenesis"
+#define STR_MAIN_TITLE "Pico Held Snes9x"
 #define STR_OPTIONS_MENU "Einstellungen"
 #define STR_ROM_SELECTOR_CAPTION "ROM Auswahl"
 
@@ -72,15 +72,19 @@
 #define STR_BRIGHTNESS "Helligkeit"
 #define STR_OPTIONS "Einstellungen"
 #define STR_LAUNCH "Spiel starten"
+#define STR_SHUTDOWN "Ausschalten"
 
 #define STR_100 "100 %"
+#define STR_90 "90 %"
 #define STR_80 "80 %"
-#define STR_75 "75 %"
+#define STR_70 "70 %"
 #define STR_60 "60 %"
 #define STR_50 "50 %"
 #define STR_40 "40 %"
-#define STR_25 "25 %"
+#define STR_30 "30 %"
 #define STR_20 "20 %"
+#define STR_10 "10 %"
+#define STR_0 "0 %"
 
 #define STR_BTN_MENU "Knopfreihenfolge"
 #define STR_BTN_ABC "A-B-C"

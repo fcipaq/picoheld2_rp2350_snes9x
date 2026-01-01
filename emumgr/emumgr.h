@@ -21,6 +21,12 @@
 #ifndef EMUMGR_H
 #define EMUMGR_H
 
+typedef struct {
+  int volume;
+  int brightness;
+  void* psram_rom;
+} emulator_state_t;
+
 void emumgr_menu(gbuffer_t fb);
 
 #endif //EMUMGR_H

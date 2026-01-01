@@ -55,16 +55,11 @@ extern "C" {
 uint32_t millis();
 uint32_t micros();
 
-typedef struct 
-{
-  char* buffer;
-  int item_cnt;
-} dir_list_t;
-
 /* ====================================================== variables ====================================================== */
 extern LCD_DPI lcd;
 FATFS fs_handle;
 bool m_sd_init = false;
+emulator_state_t emulator_state;
 /* ====================================================== end variables ====================================================== */
 
 #define MENU_FONT pixelmix_14_16
@@ -73,8 +68,12 @@ bool m_sd_init = false;
 #define MENU_REPEAT_START (500)
 #define MENU_REPEAT_DELAY (100)
 
+#define MENU_OFFSET_X (30)
+#define MENU_OFFSET_Y (30)
+
 #define MENU_MAX_ITEMS (100)
 #define MENU_MAX_DIR_ITEMS (100)
+#define DIRECTORY_BUFFER_SIZE (MENU_MAX_DIR_ITEMS * (256 + 4))
 
 #define SAVESTATE_DIRECTORY "/roms/snes/save/"
 #define ROM_DIRECTORY "/roms/snes/"
@@ -90,6 +89,8 @@ bool m_sd_init = false;
 
 #define MENU_LST "\xff"
 
+const char nullstring = 0;
+
 const char* confirm_menu_items_overwrite[] = { STR_CONFIRM_OVERWRITE,
                                                STR_YES,
                                                STR_NO,
@@ -104,10 +105,11 @@ const char main_menu_items[] = { STR_MAIN_TITLE"\0"\
 					 									     STR_LAUNCH"\0"\
                                  STR_LOAD"\0"\
                                  STR_SAVE"\0"\
-                                 STR_SEL_ROM"\0"\
                                  STR_SOUND"\0"\
                                  STR_BRIGHTNESS"\0"\
+                                 STR_SEL_ROM"\0"\
                                  STR_OPTIONS"\0"\
+                                 STR_SHUTDOWN"\0"\
                                  MENU_LST };
 
 const char* opt_menu_items[] = { STR_OPTIONS_MENU,
@@ -119,15 +121,15 @@ const char* opt_menu_items[] = { STR_OPTIONS_MENU,
                                                            STR_GO_BACK,
                                                            MENU_LST };
 
-const char* save_menu_items[] = { STR_SAVE_STATE,
-                                                             STR_SLOT_1,
-                                                             STR_SLOT_2,
-                                                             STR_SLOT_3,
-                                                             STR_SLOT_4,
-                                                             STR_SLOT_5,
-                                                             STR_SLOT_6,
-                                                             STR_GO_BACK,
-                                                             MENU_LST };
+const char save_menu_items[] = { STR_SAVE_STATE"\0"\
+                                 STR_SLOT_1"\0"\
+                                 STR_SLOT_2"\0"\
+                                 STR_SLOT_3"\0"\
+                                 STR_SLOT_4"\0"\
+                                 STR_SLOT_5"\0"\
+                                 STR_SLOT_6"\0"\
+                                 STR_GO_BACK"\0"\
+                                 MENU_LST };
 
 const char* load_menu_items[] = { STR_LOAD_STATE,
                                                              STR_SLOT_1,
@@ -139,23 +141,20 @@ const char* load_menu_items[] = { STR_LOAD_STATE,
                                                              STR_GO_BACK,
                                                              MENU_LST };
 
-const char* bri_menu_items[] = { STR_BRIGHTNESS,
-                                                           STR_20,
-                                                           STR_40,
-                                                           STR_60,
-                                                           STR_80,
-                                                           STR_100,
-                                                           STR_GO_BACK,
-                                                           MENU_LST };
+const char* bri_menu = STR_BRIGHTNESS;
 
 const char* snd_menu_items[] = { STR_SOUND,
-                                                           STR_OFF,
-                                                           STR_25,
-                                                           STR_50,
-                                                           STR_75,
-                                                           STR_100,
-                                                           STR_TOGGLE_SND_ACC,
-                                                           STR_GO_BACK,
+                                                           STR_0"\0"\
+                                                           STR_20"\0"\
+                                                           STR_30"\0"\
+                                                           STR_40"\0"\
+                                                           STR_50"\0"\
+                                                           STR_60"\0"\
+                                                           STR_70"\0"\
+                                                           STR_80"\0"\
+                                                           STR_90"\0"\
+                                                           STR_100"\0"\
+                                                           STR_GO_BACK"\0"\
                                                            MENU_LST };
 
 const char* btn_menu_items[] = { STR_BTN_MENU,
@@ -209,6 +208,7 @@ int sd_init() {
   FRESULT fr;     /* FatFs return code */
 
   pwr_sd_sply(1);
+  sleep_ms(250);  // Is that enough?
 
   // modify below if customized configuration is needed
   pico_fatfs_spi_config_t config = {
@@ -253,13 +253,12 @@ int sd_init() {
   return ret;
 }
 
-bool load_rom() {
+int load_rom_from_sd(char* filename) {
   int ret = 0;
   FIL fil;
   FRESULT fr;
 
-    //fr = f_open(&fil, "bench.dat", FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
-  fr = f_open(&fil, "rom.bin", FA_READ);
+  fr = f_open(&fil, filename, FA_READ);
 
   if (fr != FR_OK) {
       printf("open file failed: %d\n", (int) fr);
@@ -269,24 +268,27 @@ bool load_rom() {
   
   printf("open complete\n");
 
-  //fr = f_write(&fil, test_str, 17, &bw);
-  uint32_t unread_bytes = f_size(&fil);
-  uint8_t* buf = (uint8_t*) sfe_mem_malloc(unread_bytes);
+  if (emulator_state.psram_rom)
+    sfe_mem_free(emulator_state.psram_rom);
+
+  uint32_t filesize = f_size(&fil);
+  emulator_state.psram_rom = sfe_mem_malloc(filesize);
+  uint8_t* buf = (uint8_t*) emulator_state.psram_rom;
+  uint32_t unread_bytes = filesize;
 
   if (!buf) {
-    printf("unable to get buffer (%d bytes).\n", unread_bytes);
-    ret = -1;
+    printf("unable to get buffer (%d bytes).\n", filesize);
+    ret = -2;
     goto bailout;
   }
 
-  printf("Got buffer (%d bytes).\n", unread_bytes);
+  printf("Got buffer (%d bytes).\n", filesize);
 
   //Memory.ROM = (uint8_t*) FLASH_ROM_ADDRESS;
   //Memory.ROM_Size = FLASH_ROM_ADDRESS;
 
   Memory.ROM = buf;
-  Memory.ROM_Size = unread_bytes;
-  Memory.ROM_is_writable = true;
+  Memory.ROM_Size = filesize;
 
   while (unread_bytes) {
     UINT bytes_read;
@@ -295,11 +297,13 @@ bool load_rom() {
     unread_bytes -= bytes_read;
     if ((fr != FR_OK) && unread_bytes) {
       printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
-      ret = -2;
+      ret = -3;
       goto bailout;
     }
   }
 
+  printf("successfully read %d bytes from file %s\n", (int) filesize, filename);
+  
 bailout:
 
   f_close(&fil);
@@ -313,283 +317,194 @@ static bool screenshot_handler(const char *filename, int width, int height)
     return true;
 }
 
-static bool save_state_handler(char *filename)
+int save_state_handler(char *filename)
 {
-  bool ret = false;
+  int ret = 0;
 
-#if 0
-  char filename_local[ROM_NAME_LEN + 2];
+  printf("Savestate handler called: %s\n", filename);
 
-  filename_local[0] = '/';
-  memcpy(&filename_local[1], filename, ROM_NAME_LEN);
-  filename_local[ROM_NAME_LEN + 1] = 0;
+  FIL fil;
+  FRESULT fr;
+  
+  fr = f_open(&fil, filename, FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
 
-  File savestate_file;
-
-  printf("Savestate handler called...\n\n");
-
-  if (!_sd_init) {
-    if (!SD.begin(PIN_SD_CS, SPI, SD_SPI_SPEED)) {
-      printf("Unable to init SD card\n");
-      goto bailout;
-    }
-
-    _sd_init = 1;
+  if (fr != FR_OK) {
+    printf("open file failed: %d\n", (int) fr);
+    message("open save file failed");
+    return -1;  // error opening
   }
 
-  if (SD.exists(filename)) {
-    if (!SD.remove(filename)) {
-      printf("Unable to delete game state file\n");
-      goto bailout;
-    }
+  UINT bw;
+
+  fr = f_write(&fil, (uint8_t*) &CPU, sizeof(CPU), &bw);
+  if ((fr != FR_OK) || (bw != sizeof(CPU))) {
+    ret = -2;  // error writing
+    goto bailout;
   }
-
-  savestate_file = SD.open(filename_local, FILE_WRITE);
-
-  if (!savestate_file) {
-    printf("Unable to open save state file for writing.\n\n");
+  fr = f_write(&fil, (uint8_t*) &ICPU, sizeof(ICPU), &bw);
+  if ((fr != FR_OK) || (bw != sizeof(ICPU))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) &PPU, sizeof(PPU), &bw);
+  if ((fr != FR_OK) || (bw != sizeof(PPU))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) &DMA, sizeof(DMA), &bw);
+  if ((fr != FR_OK) || (bw != sizeof(DMA))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) Memory.VRAM, VRAM_SIZE, &bw);
+  if ((fr != FR_OK) || (bw != VRAM_SIZE)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) Memory.RAM, RAM_SIZE, &bw);
+  if ((fr != FR_OK) || (bw != RAM_SIZE)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) Memory.SRAM, SRAM_SIZE, &bw);
+  if ((fr != FR_OK) || (bw != SRAM_SIZE)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &bw);
+  if ((fr != FR_OK) || (bw != FILLRAM_SIZE)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) &APU, sizeof(APU), &bw);
+  if ((fr != FR_OK) || (bw != sizeof(APU))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) &IAPU, sizeof(IAPU), &bw);
+  if ((fr != FR_OK) || (bw != sizeof(IAPU))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) IAPU.RAM, 0x10000, &bw);
+  if ((fr != FR_OK) || (bw != 0x10000)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_write(&fil, (uint8_t*) &SoundData, sizeof(SoundData), &bw);
+  if ((fr != FR_OK) || (bw != sizeof(SoundData))) {
+    ret = -2;  // error writing
     goto bailout;
   }
 
-  savestate_file.write((uint8_t*) &CPU, sizeof(CPU));
-  savestate_file.write((uint8_t*) &ICPU, sizeof(ICPU));
-  savestate_file.write((uint8_t*) &PPU, sizeof(PPU));
-  savestate_file.write((uint8_t*) &DMA, sizeof(DMA));
-  savestate_file.write((uint8_t*) Memory.VRAM, VRAM_SIZE);
-  savestate_file.write((uint8_t*) Memory.RAM, RAM_SIZE);
-  savestate_file.write((uint8_t*) Memory.SRAM, SRAM_SIZE);
-  savestate_file.write((uint8_t*) Memory.FillRAM, FILLRAM_SIZE);
-  savestate_file.write((uint8_t*) &APU, sizeof(APU));
-  savestate_file.write((uint8_t*) &IAPU, sizeof(IAPU));
-  savestate_file.write((uint8_t*) IAPU.RAM, 0x10000);
-  savestate_file.write((uint8_t*) &SoundData, sizeof(SoundData));
-
-  savestate_file.close();
-
   printf("Game state saved.\n\n");
 
-  ret = true;
-  
+  ret = 0;
+
   bailout:
   
-  if (ret)
-    just_saved = 1;
-  else
-    just_saved = 2;
-
-  just_saved_timer = millis();
-#endif
+  f_close(&fil);
 
   return ret;
 }
 
-static bool load_state_handler(char *filename)
+int load_state_handler(char *filename)
 {
-#if 0
-  char filename_local[ROM_NAME_LEN + 2];
+  int ret = 0;
 
-  filename_local[0] = '/';
-  memcpy(&filename_local[1], filename, ROM_NAME_LEN);
-  filename_local[ROM_NAME_LEN + 1] = 0;
+  FIL fil;
+  FRESULT fr;
 
   printf("Loadstate handler called...\n\n");
 
-  if (!_sd_init) {
-    if (!SD.begin(PIN_SD_CS, SPI, 10000000)) {
-      printf("Unable to init SD card\n\n");
-      just_saved_timer = millis();
-      just_saved = 2;
-      return false;
-    }
+  fr = f_open(&fil, filename, FA_READ);
 
-    _sd_init = 1;
+  if (fr != FR_OK) {
+    printf("open file failed: %d\n", (int) fr);
+    message("open save file failed");
+    return -1;  // error opening
   }
 
-  File readstate_file = SD.open(filename_local, FILE_READ);
-
-  if (!readstate_file) {
-    printf("Failed to load game state:\n");
-    printf("*\n");
-    printf(filename_local);
-    printf("*\n");
-    just_saved_timer = millis();
-    just_saved = 2;
-    return false;
-  }
+  UINT br;
 
   S9xReset();
 
   // At this point we can't go back and a failure will corrupt the state anyway
   printf("Now reading to memory.\n");
 
-  readstate_file.read((uint8_t*) &CPU, sizeof(CPU));
-  readstate_file.read((uint8_t*) &ICPU, sizeof(ICPU));
-  readstate_file.read((uint8_t*) &PPU, sizeof(PPU));
-  readstate_file.read((uint8_t*) &DMA, sizeof(DMA));
-  readstate_file.read((uint8_t*) Memory.VRAM, VRAM_SIZE);
-  readstate_file.read((uint8_t*) Memory.RAM, RAM_SIZE);
-  readstate_file.read((uint8_t*) Memory.SRAM, SRAM_SIZE);
-  readstate_file.read((uint8_t*) Memory.FillRAM, FILLRAM_SIZE);
-  readstate_file.read((uint8_t*) &APU, sizeof(APU));
-  readstate_file.read((uint8_t*) &IAPU, sizeof(IAPU));
-  readstate_file.read((uint8_t*) IAPU.RAM, 0x10000);
-  readstate_file.read((uint8_t*) &SoundData, sizeof(SoundData));
-  
-  readstate_file.close();
+  fr = f_read (&fil, (uint8_t*) &CPU, sizeof(CPU), &br);
+  if ((fr != FR_OK) || (br != sizeof(CPU))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) &ICPU, sizeof(ICPU), &br);
+  if ((fr != FR_OK) || (br != sizeof(ICPU))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) &PPU, sizeof(PPU), &br);
+  if ((fr != FR_OK) || (br != sizeof(PPU))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) &DMA, sizeof(DMA), &br);
+  if ((fr != FR_OK) || (br != sizeof(DMA))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) Memory.VRAM, VRAM_SIZE, &br);
+  if ((fr != FR_OK) || (br != VRAM_SIZE)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) Memory.RAM, RAM_SIZE, &br);
+  if ((fr != FR_OK) || (br != RAM_SIZE)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) Memory.SRAM, SRAM_SIZE, &br);
+  if ((fr != FR_OK) || (br != SRAM_SIZE)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &br);
+  if ((fr != FR_OK) || (br != FILLRAM_SIZE)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) &APU, sizeof(APU), &br);
+  if ((fr != FR_OK) || (br != sizeof(APU))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) &IAPU, sizeof(IAPU), &br);
+  if ((fr != FR_OK) || (br != sizeof(IAPU))) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) IAPU.RAM, 0x10000, &br);
+  if ((fr != FR_OK) || (br != 0x10000)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
+  fr = f_read (&fil, (uint8_t*) &SoundData, sizeof(SoundData), &br);
+  if (br != sizeof(SoundData)) {
+    ret = -2;  // error writing
+    goto bailout;
+  }
 
   printf("Game state loaded.\n");
 
-  return S9xLoadState();
-#else
-  return false;
-#endif
+bailout:
+
+  f_close(&fil);
+
+  //return S9xLoadState();
+  return ret;
 }
 
 //================================================================================================================================================================
 #if 0
-
-void create_filename(char* s, int num, int ofs) {
-  char a;
-  for (int h = ofs; h < 32 * 2 + 1; h += 2) {
-    a = s[h];
-    s[h] = s[h + 1];
-    s[h + 1] = a;
-  }
-
-  for (char* s2 = s; *s2; ++s2) {
-    if (*s2 != ' ')
-      *s++ = *s2;
-  }
-  *s++ = num + 0x30;
-  *s = 0;
-}
-
-void clearscreen() {
-}
-
-#define MENU_BUFFER_HEIGHT 20
-#define MENU_BUFFER_WIDTH 320
-
-#define color_bkg RGBColor888_565(0, 10, 25)
-#define color_shadow RGBColor888_565(64, 0, 0)
-#define color_caption RGBColor888_565(164, 73, 164)
-#define color_selected 0xf000
-#define color_unselected 0xffff
-
-
-void printStrings() {
-    for (const auto& s : strings) {
-        std::cout << s << " ";
-    }
-    std::cout << std::endl;
-}
-
-void message(std::initializer_list<std::string> messages, int delay_ms) {
-    for (const auto& s : messages) {
-      #define MAX_MSG_LEN (50)
-      char buffer[MAX_MSG_LEN + 1];
-      int a = s.end() <= MAX_MSG_LEN ? s.end() : MAX_MSG_LEN;
-      std::copy(s.begin(), a, buffer);
-      buffer[a] = '\0';  // Manual null-terminate
-      font_write_string_centered(SCREEN_WIDTH / 2 + 1, 0 + 1, color_shadow, (char*)message[h], (glcdFont_t*) MENU_FONT, scr_buf);
-      font_write_string_centered(SCREEN_WIDTH / 2, 0, color_unselected, (char*)message[h], (glcdFont_t*) MENU_FONT, scr_buf);
-    }
-
-  delay(50 + delay_ms);
-
-}
-
-int selection_menu(const char** menu, int menu_items, int sel_delay, int cyclic, int preselect, int backkey) {
-  int ret = 0;
-  int debounce = 1;
-  int debounce_fist = 1;
-  uint16_t color = 0;
-  int8_t selected_item = preselect;
-  
-  while (1) {
-
-    for (int h = 0; h < menu_items; h++) {
-      if (h == selected_item)
-        color = color_selected;
-      else
-        color = color_unselected;
-
-      if (h == 0)
-        color = color_caption;
-
-      glcdFillRect(0, 0, MENU_BUFFER_WIDTH, MENU_BUFFER_HEIGHT, color_bkg, scr_buf);
-
-      font_write_string_centered(SCREEN_WIDTH / 2 + 1, 0 + 1, color_shadow, (char*)menu[h], (glcdFont_t*) MENU_FONT, scr_buf);
-      font_write_string_centered(SCREEN_WIDTH / 2, 0, color, (char*)menu[h], (glcdFont_t*) MENU_FONT, scr_buf);
-    }
-
-    uint16_t dpad = checkDPad();
-    uint16_t bts = checkButtons();
-
-    if (debounce == -1 || debounce_fist) {
-      while (bts) {
-        bts = checkButtons();
-      }
-      delay(sel_delay);
-	  debounce_fist = 0;
-    }
-
-    if (debounce > 0)
-      debounce++;
-
-    if (debounce > 30)
-      debounce = 0;
-
-    if (debounce == 0) {
-      if (dpad & DPAD_DOWN) {
-        debounce = 1;
-        selected_item++;
-      }
-      if (dpad & DPAD_UP) {
-        debounce = 1;
-        selected_item--;
-      }
-      if ((dpad & DPAD_LEFT) && backkey) {
-        debounce = 1;
-        ret = -3;  // means left
-        goto bailout;
-      }
-
-      if (selected_item < 1) {
-        if (!cyclic) {
-          ret = -1;
-          goto bailout;
-        }
-
-        selected_item = menu_items - 1;
-      }
-
-      if (selected_item > menu_items - 1) {
-        if (!cyclic) {
-          ret = -2;
-          goto bailout;
-        }
-
-        selected_item = 1;
-      }
-
-      if (bts) {
-        while (bts) {
-          bts = checkButtons();
-        }
-        delay(10);
-        ret = selected_item;
-
-        goto bailout;
-      }
-    }
-  }
-
-bailout:
-
-  free((void*)scr_buf);
-  return ret;
-}
 
 int calc_rom_checksum(uint8_t* rom_addr) {
   //todo
@@ -618,56 +533,6 @@ int check_rom_valid(uint8_t* rom_addr) {
   return false;
 */
   return true;
-}
-
-#define BAR_START_Y 110
-#define BAR_END_Y BAR_START_Y + 26
-#define BAR_START_X 50
-#define BAR_END_X SCREEN_WIDTH - BAR_START_X
-#define BAR_BORDER_COLOR color_unselected
-#define BAR_COLOR RGBColor888_565(0, 255, 0)
-#define BAR_CAPTION_Y 50
-
-void draw_bar(int percent, char* title) {
-  if (percent < 0)
-    percent = 0;
-
-  if (percent > 100)
-    percent = 10;
-
-  int fill = (SCREEN_WIDTH - 2 * BAR_START_X - 8) * percent / 100;
-
-  for (int i = 0; i < SCREEN_HEIGHT; i++) {
-    for (int h = 0; h < SCREEN_WIDTH; h++)
-      scr_buf[BUF_HEADER_SIZE + h] = color_bkg;
-
-    if (i >= BAR_CAPTION_Y && i < BAR_CAPTION_Y + getFontHeight((glcdFont_t*) MENU_FONT)) {
-      font_write_string_centered(SCREEN_WIDTH / 2 + 1, BAR_CAPTION_Y - i + 1, color_shadow, title, (glcdFont_t*) MENU_FONT, scr_buf);
-      font_write_string_centered(SCREEN_WIDTH / 2, BAR_CAPTION_Y - i, color_unselected, title, (glcdFont_t*) MENU_FONT, scr_buf);
-    }
-
-    if (i >= BAR_START_Y && i < BAR_START_Y + 2)
-      for (int h = BAR_START_X; h < BAR_END_X; h++)
-        scr_buf[BUF_HEADER_SIZE + h] = BAR_BORDER_COLOR;
-
-    if (i >= BAR_START_Y + 4 && i <= BAR_END_Y - 4)
-      for (int h = BAR_START_X + 2; h < BAR_START_X + fill; h++)
-        scr_buf[BUF_HEADER_SIZE + h] = BAR_COLOR;
-
-    if (i >= BAR_END_Y && i < BAR_END_Y + 2)
-      for (int h = BAR_START_X; h < BAR_END_X; h++)
-        scr_buf[BUF_HEADER_SIZE + h] = BAR_BORDER_COLOR;
-
-    if (i >= BAR_START_Y && i < BAR_END_Y + 2) {
-      for (int h = BAR_START_X - 2; h < BAR_START_X; h++)
-        scr_buf[BUF_HEADER_SIZE + h] = BAR_BORDER_COLOR;
-
-      for (int h = BAR_END_X; h < BAR_END_X + 2; h++)
-        scr_buf[BUF_HEADER_SIZE + h] = BAR_BORDER_COLOR;
-    }
-
-  }
-
 }
 
 int flash_rom(FsFile &rom_file, uint8_t* rom_addr) {
@@ -757,239 +622,6 @@ int flash_rom(FsFile &rom_file, uint8_t* rom_addr) {
   return ret;
 }
 
-
-int load_rom() {
-  int ret = RM_SUCCESS;
-  long ofs = 0;
-  int h = 1;
-  int eod = 0;  // end of dir
-  int preselect = 1;
-  FsFile rom_file;
-  int sel = 0;
-
-  char* rom_file_list[NUM_ROM_FILE_LIST];
-
-  rom_file_list[0] = (char*)rom_file_list_header;
-
-  for (int i = 1; i < NUM_ROM_FILE_LIST; i++) {
-    rom_file_list[i] = (char*) malloc(ROM_FILE_LIST_NAME_LENGTH + 1);
-    assert(rom_file_list[i]);
-  }
-
-  FsFile rom_dir = SD.open(ROM_DIRECTORY);
-
-  if (!rom_dir.isDirectory()) {
-    rom_dir.close();
-    message2(STR_ERROR, STR_READ_ROM_DIR, 2, 2000);
-    ret = RM_ERR_NO_DIR;
-    goto bailout;
-  }
-
-  message2(STR_PRESS_LEFT, STR_RETURN, 2, 1000);
-
-  while (sel <= 0) {
-
-    if (sel != -2) {
-      if (sel == -1) {
-        rom_dir.rewindDirectory();
-
-        ofs--;
-        if (ofs < 0)
-          ofs = 0;
-
-        for (h = 0; h < ofs; h++) {
-          while (1) {
-            rom_file = rom_dir.openNextFile();
-            if (!rom_file)
-              goto allofsfilesread;
-            if (!rom_file.isDirectory())
-              break;
-          }
-        }
-      }
-
-allofsfilesread:
-
-      for (h = 1; h < NUM_ROM_FILE_LIST; h++) {
-
-        do {
-          rom_file = rom_dir.openNextFile();
-        } while (rom_file && rom_file.isDirectory());
-
-        if (!rom_file) {
-          eod = 1;
-          break;
-        } else {
-          eod = 0;
-        }
-
-        char rom_file_str_tmp[256];
-        rom_file.getName(rom_file_str_tmp, 255);
-
-        String rom_file_str = rom_file_str_tmp;
-
-        rom_file_str = rom_file_str.substring(0, ROM_FILE_LIST_NAME_LENGTH);
-        rom_file_str.toCharArray(rom_file_list[h], ROM_FILE_LIST_NAME_LENGTH);
-      }
-    } else {
-      do {
-        rom_file = rom_dir.openNextFile();
-      } while (rom_file && rom_file.isDirectory());
-
-      if (!rom_file) {
-        eod = 1;
-        goto no_more_roms;
-      } else {
-        eod = 0;
-        ofs++;
-      }
-
-      for (h = 1; h < NUM_ROM_FILE_LIST - 1; h++)
-        for (int i = 0; i < ROM_FILE_LIST_NAME_LENGTH + 1; i++)
-          rom_file_list[h][i] = rom_file_list[h + 1][i];
-
-      h++;  // for selection_menu
-
-      char rom_file_str_tmp[256];
-      rom_file.getName(rom_file_str_tmp, 255);
-
-      String rom_file_str = rom_file_str_tmp;
-
-      rom_file_str = rom_file_str.substring(0, ROM_FILE_LIST_NAME_LENGTH);
-      rom_file_str.toCharArray(rom_file_list[NUM_ROM_FILE_LIST - 1], ROM_FILE_LIST_NAME_LENGTH);
-    }
-
-    if (h == 1 && eod == 1 && ofs == 0) {
-      message2(STR_NO_ROMS, ROM_DIRECTORY, 2, 2000);
-      ret = RM_ERR_NO_ROMS;
-      goto bailout;
-    }
-
-no_more_roms:
-
-    if (sel == -1)
-      preselect = 1;
-
-    if (sel == -2)
-      preselect = h - 1;
-
-    sel = selection_menu((const char**)rom_file_list, h, SELECTION_DELAY_ROMLIST, 0, preselect, 1);
-
-    if (sel == -3)
-      goto bailout;
-  }
-
-  message2(STR_FLASHING_ROM, STR_PLEASE_WAIT, 2, 0);
-
-  rom_dir.rewindDirectory();
-
-  for (int i = 0; i < ofs + sel; i++) {
-    do {
-      rom_file = rom_dir.openNextFile();
-    } while (rom_file && rom_file.isDirectory());
-    if (!rom_file) {
-      message2(STR_ERROR, STR_READING_ROM, 2, 2000);
-      ret = RM_ERR_READING_ROM;
-      goto bailout;
-    }
-  }
-
-  if (!flash_rom(rom_file, (uint8_t*)ROM_DATA)) {
-    ret = RM_ERR_FLASHING_ROM;
-    message2(STR_ERROR, STR_FLASHING_ROM, 2, 2000);
-  }
-
-bailout:
-
-  for (int i = 1; i < NUM_ROM_FILE_LIST; i++)
-    free((void*)rom_file_list[i]);
-
-  return ret;
-}
-bool init_sd_card() {
-  SPI.setRX(PIN_SD_MISO);
-  SPI.setTX(PIN_SD_MOSI);
-  SPI.setSCK(PIN_SD_SCK);
-
-  if (!SD.begin(SdSpiConfig(PIN_SD_CS, SHARED_SPI, SD_SCK_MHZ(1), &SPI))) {
-    
-    char debug_print[20];
-    int a =  (SD.card()->errorCode());
-        itoa(a, debug_print, 10);
-
-		
-	message2(debug_print, "SD init error :(", 2, 2000);
-    return false;
-  } else
-    return true;
-}
-
-bool savestate(int num) {
-  char filename[100] = SAVESTATE_DIRECTORY;
-  int a = strlen(filename);
-
-  // concatenate strings without library
-  memcpy((void*)(filename + a), (void*)((unsigned long)&ROM_DATA[0] + 0x150), 32);
-  filename[a + 31] = '/';
-  memcpy((void*)(filename + a + 32 + 0), (void*)((unsigned long)&ROM_DATA[0] + 0x150), 32);
-  filename[a + 32 * 2] = 0;
-
-  create_filename(filename, num, a);
-
-  if (SD.exists(filename)) {
-
-    uint8_t sel = selection_menu(confirm_menu_items_overwrite, NUM_CONFIRM_MENU_ITEMS_OVERWRITE, SELECTION_DELAY, 1, 2, 0);
-
-    if (sel != 1)
-      return false;
-
-    SD.remove(filename);
-  }
-
-  message(message_save, MSG_SAVE_NUM_ROWS, 0);
-
-  SD.mkdir(SAVESTATE_DIRECTORY);
-
-  savestate_file = SD.open(filename, FILE_WRITE);
-
-  if (!savestate_file) {
-    message(message_error, MSG_ERROR_NUM_ROWS, 2000);
-    return false;
-  }
-
-  gwenesis_save_state();
-
-  savestate_file.close();
-
-  return true;
-}
-
-bool loadstate(int num) {
-  char filename[100] = SAVESTATE_DIRECTORY;
-  int a = strlen(filename);
-
-  // concatenate strings without library
-  memcpy((void*)(filename + a), (void*)((unsigned long)&ROM_DATA[0] + 0x150), 32);
-  filename[a + 31] = '/';
-  memcpy((void*)(filename + a + 32 + 0), (void*)((unsigned long)&ROM_DATA[0] + 0x150), 32);
-  filename[a + 32 * 2] = 0;
-
-  create_filename(filename, num, a);
-
-  savestate_file = SD.open(filename, FILE_READ);
-
-  if (!savestate_file) {
-    message(message_error, MSG_ERROR_NUM_ROWS, 2000);
-    return false;
-  }
-
-  gwenesis_load_state();
-
-  savestate_file.close();
-
-  return true;
-}
-
 #endif
 
 
@@ -1002,6 +634,8 @@ char* get_item(int item, char* buffer) {
 
     while (1) {
       pos++;
+      if (pos >= DIRECTORY_BUFFER_SIZE)
+        return (char*) &nullstring;
       if (buffer[pos] == 0) {
         pos++;
         break;
@@ -1020,7 +654,7 @@ int get_item_cnt(char* buffer) {
   int pos = 0;
   int cur_entry = 0;
 
-  while (1) {
+  for (int i = 0; i < DIRECTORY_BUFFER_SIZE; i++) {
 
     while (1) {
       pos++;
@@ -1035,52 +669,136 @@ int get_item_cnt(char* buffer) {
 
   }
 
+  return -1;  // no terminator found within boundaries
 }
 
-int get_directory(const char *path, dir_list_t* directory) {
+int get_directory(char *path, char* buffer) {
     FRESULT res;
     DIR dir;
     FILINFO fno;
 
     int buf_pos = 0;
-    directory->item_cnt = 0;
+    int item_cnt = 0;
 
     res = f_opendir(&dir, path);                   /* Open the directory */
     if (res == FR_OK) {
         for (;;) {
             res = f_readdir(&dir, &fno);           /* Read a directory item */
-            if ((fno.fname[0] == 0) || (directory->item_cnt >= MENU_MAX_DIR_ITEMS)) break;          /* Error or end of dir/RAM */
+            if ((fno.fname[0] == 0) || (item_cnt >= MENU_MAX_DIR_ITEMS)) break;          /* Error or end of dir/RAM */
             if (!(fno.fattrib & AM_DIR)) {
-                strcpy(&directory->buffer[buf_pos], fno.fname);
+                strcpy(&buffer[buf_pos], fno.fname);
                 buf_pos += strlen(fno.fname) + 1;
-                directory->item_cnt++;
+                item_cnt++;
             }
         }
         f_closedir(&dir);
     } else {
-        printf("Failed to open \"%s\". (%u)\n", path, res);
+        printf("Error reading directory: \"%s\". (%u)\n", path, res);
+        return -1;
     }
 
-    directory->buffer[buf_pos] = 255;  // MENU_LST
+    buffer[buf_pos] = 255;  // MENU_LST
 
-    return res;
+    return 0;
 }
 
+int slider_menu(char* caption, int start_val, int step, gbuffer_t fb) {
+  gbuffer_t fb_back;
+  lcd.get_backbuffer(&fb_back);
 
+  font_t* menu_font = (font_t*) font_8x11;
+  int menu_offset_x = MENU_OFFSET_X;
+  int menu_width = gbuf_get_width(fb_back) - 2 * menu_offset_x;
+  int bar_height = 10;
+  int menu_height = font_get_height(menu_font) + bar_height;
+
+  int b_debounce = 0;
+  int b_debounce_timer = 0;
+  int b_repeater = 0;
+
+  int value = start_val;
+  int first_run = 1;
+
+  if ((step < 1) || (step > 50))
+    step = 10;
+
+  while (1) {
+
+    ctrl_button_state_update();
+
+    if (first_run) {
+      while (1) {
+        if (!ctrl_is_pressed(BUTTON_ANY))
+          break;
+        sleep_ms(50);
+        ctrl_button_state_update();
+      } 
+      first_run = 0;
+    }
+
+    if (ctrl_is_pressed(BUTTON_LEFT) && !b_debounce)
+      value -= step;
+      
+    if (ctrl_is_pressed(BUTTON_RIGHT) && !b_debounce)
+      value += step;
+  
+    if (value < 0)
+      value = 0;
+
+    if (value > 100)
+      value = 100;
+
+    if (ctrl_is_pressed(BUTTON_A))
+      return value;
+
+    if (ctrl_is_pressed(BUTTON_B) ||
+        ctrl_is_pressed(BUTTON_X) ||
+        ctrl_is_pressed(BUTTON_Y))
+      return start_val;
+
+    if (!ctrl_is_pressed(BUTTON_ANY)) {
+      b_debounce = 0;
+      b_repeater = 0;
+    } else {
+      if (b_debounce == 0) {
+        b_debounce = 1;
+        b_debounce_timer = millis();
+      } else if ((millis() - b_debounce_timer > MENU_REPEAT_START) && !b_repeater) {
+        b_repeater = 1;
+        b_debounce = 0;
+        b_debounce_timer = millis();         
+      } else if ((millis() - b_debounce_timer > MENU_REPEAT_DELAY) && b_repeater) {
+        b_debounce = 0;
+        b_debounce_timer = millis();         
+      }
+    }
+
+    draw_rect_fill(menu_offset_x, gbuf_get_height(fb_back) / 2 - 50, menu_offset_x + menu_width, gbuf_get_height(fb_back) / 2 + 50, 0xaffe, fb_back);
+
+    font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, 0xffff, caption, menu_font, fb_back);
+
+    draw_rect_fill(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 5, menu_offset_x + 10 + (menu_width - 20) * value / 100, gbuf_get_height(fb_back) / 2 + 5, 0xffff, fb_back);
+
+    lcd.request_pageflip();
+    lcd.get_backbuffer(&fb_back);
+  }
+
+}
 
 int selection_menu(char* item_list, gbuffer_t fb) {
+  gbuffer_t fb_back;
+  lcd.get_backbuffer(&fb_back);
+
   color_t color_shadow = 0xffff;
   float menu_caption_offset = 1.2;
-  int menu_offset_x = 20;
-  int menu_offset_y = 20;
-  int menu_width = SNES_WIDTH - 2 * menu_offset_x;
-  int menu_height = SNES_HEIGHT - 2 * menu_offset_y;
+  int menu_offset_x = MENU_OFFSET_X;
+  int menu_offset_y = MENU_OFFSET_Y;
+  int menu_width = gbuf_get_width(fb_back) - 2 * menu_offset_x;
+  int menu_height = gbuf_get_height(fb_back) - 2 * menu_offset_y;
   font_t* menu_font = (font_t*) font_8x11;
   int menu_items_clearance_y = 5;
   int max_vis_items = (menu_height - (font_get_height(menu_font) + menu_items_clearance_y) * menu_caption_offset) / (font_get_height(menu_font) + menu_items_clearance_y);
-    
-  gbuffer_t fb_back;
-
+   
   int b_debounce = 0;
   int b_debounce_timer = 0;
   int b_repeater = 0;
@@ -1090,9 +808,9 @@ int selection_menu(char* item_list, gbuffer_t fb) {
   int num_itms = get_item_cnt(item_list) - 1;  // minus the caption
   if (num_itms < max_vis_items)
     max_vis_items = num_itms;
+  int first_run = 1;
   
   while (1) {
-    lcd.get_backbuffer(&fb_back);
     draw_rect_fill(menu_offset_x, menu_offset_y, menu_offset_x + menu_width, menu_offset_y + menu_height, 0xaffe, fb_back);
     
     // caption
@@ -1140,13 +858,22 @@ int selection_menu(char* item_list, gbuffer_t fb) {
         font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y, 0x0, 'A', menu_font, fb_back);
 
       // arrow down
-
       if (ofs_itm + max_vis_items < num_itms)
         font_put_char(menu_offset_x + menu_width - 10, scrl_down_arrow_y, 0x0, 'V', menu_font, fb_back);
 
     }
 
     ctrl_button_state_update();
+
+    if (first_run) {
+      while (1) {
+        if (!ctrl_is_pressed(BUTTON_ANY))
+          break;
+        sleep_ms(50);
+        ctrl_button_state_update();
+      } 
+      first_run = 0;
+    }
 
     // return selected item
     if (ctrl_is_pressed(BUTTON_A) ||
@@ -1165,14 +892,7 @@ int selection_menu(char* item_list, gbuffer_t fb) {
     if (ctrl_is_pressed(BUTTON_UP) && !b_debounce && (cur_itm > 0))
       cur_itm--;
 
-    if (!ctrl_is_pressed(BUTTON_DOWN) &&
-        !ctrl_is_pressed(BUTTON_UP) &&
-        !ctrl_is_pressed(BUTTON_A) &&
-        !ctrl_is_pressed(BUTTON_B) &&
-        !ctrl_is_pressed(BUTTON_X) &&
-        !ctrl_is_pressed(BUTTON_Y) &&
-        !ctrl_is_pressed(BUTTON_ST) &&
-        !ctrl_is_pressed(BUTTON_SEL)) {
+    if (!ctrl_is_pressed(BUTTON_ANY)) {
       b_debounce = 0;
       b_repeater = 0;
     } else {
@@ -1190,47 +910,181 @@ int selection_menu(char* item_list, gbuffer_t fb) {
     }
 
     lcd.request_pageflip();
+    lcd.get_backbuffer(&fb_back);
   }
 
-  do {
-    sleep_ms(50);
+  while (1) {
     ctrl_button_state_update();
-  } while(ctrl_is_pressed(BUTTON_DOWN) ||
-          ctrl_is_pressed(BUTTON_UP) ||
-          ctrl_is_pressed(BUTTON_LEFT) ||
-          ctrl_is_pressed(BUTTON_RIGHT) ||
-          ctrl_is_pressed(BUTTON_A) ||
-          ctrl_is_pressed(BUTTON_B) ||
-          ctrl_is_pressed(BUTTON_X) ||
-          ctrl_is_pressed(BUTTON_Y) ||
-          ctrl_is_pressed(BUTTON_ST) ||
-          ctrl_is_pressed(BUTTON_SEL));
+    if (!ctrl_is_pressed(BUTTON_ANY))
+      break;
+    sleep_ms(50);
+  } 
 
+}
+
+int menu_loadfile(gbuffer_t fb) {
+  char* buffer;
+  int res = 0;
+  int ret = 0;
+  buffer = (char*) sfe_mem_malloc(DIRECTORY_BUFFER_SIZE);
+  if (!buffer)
+    return -2; // no free psram
+
+  strcpy(buffer, "Select file");
+
+  res = get_directory(ROM_DIRECTORY, &buffer[strlen(buffer) + 1]);
+  
+  if (res != 0) {
+    ret = -3;  // cannot read dir
+    goto bailout;
+  }
+
+  res = selection_menu((char*) buffer, fb);
+
+  if (res == -1) {
+    ret = -1;  // aborted by user
+    goto bailout;
+  }
+
+  char filename[512];
+  strcpy(filename, ROM_DIRECTORY);
+  strcat(filename, get_item(res + 1, buffer));
+
+  printf("filename to load is: %s\n", filename);
+
+  res = load_rom_from_sd(filename);
+  if (res != 0) {
+    printf("load_rom_from_sd return %d\n", res);
+    ret = -4;  // error reading file
+    goto bailout;
+  }
+
+  S9xReset();
+  for (int i = 0; i < SRAM_SIZE; i++)
+    Memory.SRAM[i] = 0;
+ 
+  Memory.ROM_is_writable = true;
+  if (!LoadROM(NULL)) {
+    ret = -5;  // error loading rom
+    goto bailout;
+  }
+
+ bailout:
+
+  if (buffer)
+    sfe_mem_free((void*) buffer);
+
+  return ret;
 }
 
 void emumgr_menu(gbuffer_t fb) {
 
-  gbuffer_t fb_saved;
+//  gbuffer_t fb_saved;
+  int res;
+  int main_choice, sub_choice;
 
-  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS)
-    message("error: no psram");
+//  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS)
+//    message("error: no psram");
 
   // save original screen contents
-  blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_saved);
+//  blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_saved);
 
   sd_init();
 
-  dir_list_t directory;
-  directory.buffer = (char*) sfe_mem_malloc(MENU_MAX_DIR_ITEMS * 256);
-  
-  selection_menu((char*) directory.buffer, fb);
+  while (1) {
+    main_choice = selection_menu((char*) main_menu_items, fb);
+    switch (main_choice) {
+      case 0:
+        load_rom_from_sd("/roms/snes/Super Mario World (U) [!].smc");
 
-  load_rom();
+        S9xReset();
+          
+        Memory.ROM_is_writable = true;
+        LoadROM(NULL);
+        goto leave;
+      case 1:
+        sub_choice = selection_menu((char*) save_menu_items, fb);
+        if ((sub_choice >= 0) && (sub_choice <= 5)) {
+          char filename[300] = SAVESTATE_DIRECTORY;
+          strcat(filename, Memory.ROMName);
+          char slot_num[3];
+          itoa(sub_choice + 1, slot_num, 10);
+          strcat(filename, slot_num);
+          if (!load_state_handler(filename))
+            goto leave;
 
-  if (!LoadROM(NULL))
-    message("ROM loading failed!\n");
+        }          
+        break;
+      case 2:
+        sub_choice = selection_menu((char*) save_menu_items, fb);
+        if ((sub_choice >= 0) && (sub_choice <= 5)) {
+          char filename[300] = SAVESTATE_DIRECTORY;
+          strcat(filename, Memory.ROMName);
+          char slot_num[3];
+          itoa(sub_choice + 1, slot_num, 10);
+          strcat(filename, slot_num);
+          
+          int a = save_state_handler(filename);
+          if (!a)
+            printf("successfully saved.\n");
+          else
+            printf("error saving: %d\n", a);
 
-  if (fb_saved.data)
-    sfe_mem_free(fb_saved.data);
+
+          goto leave;
+        }
+          
+        break;
+      case 3:
+        sub_choice = slider_menu((char*) bri_menu, emulator_state.volume, 10, fb);
+        if ((sub_choice >= 0) && (sub_choice <= 100))
+          emulator_state.volume = sub_choice / 10;
+        break;
+      case 4:
+        sub_choice = slider_menu((char*) bri_menu, emulator_state.brightness, 10, fb);
+        if ((sub_choice >= 0) && (sub_choice <= 100))
+          if (sub_choice == 0) sub_choice = 1;
+          emulator_state.brightness = sub_choice;
+          lcd_backlight_set(emulator_state.brightness);
+        break;
+      case 5:
+        res = menu_loadfile(fb);
+        switch (res) {
+          case 0:
+            printf("starting emulation\n");
+            goto leave;
+          case -1:
+            printf("aborted by user\n");
+            break;
+          case -2:
+            printf("no psram\n");
+            break;
+          case -3:
+            printf("cannot read dir\n");
+            break;
+          case -4:
+            printf("error reading file\n");
+            break;
+          case -5:
+            printf("error loading rom\n");
+            break;
+          default:
+            break;
+        }
+        break;
+      case 7:
+        pwr_shutdown();
+        break;  
+      default:
+        break;
+    }
+  }
+
+leave:
+
+  sd_deinit();
+
+//  if (gbuf_get_dat_ptr(fb_saved))
+//    sfe_mem_free((void*) gbuf_get_dat_ptr(fb_saved));
 
 }

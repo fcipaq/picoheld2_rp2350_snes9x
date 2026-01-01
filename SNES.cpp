@@ -80,44 +80,6 @@ static void update_keymap(int id)
 uint32_t timer_str_ld = 0;
 int str_ld_debounce = 0;
 
-void check_load_save(void) {
-#if 0
-  if ( (buts & BUTTON_1) &&
-       (buts & BUTTON_2) && 
-       (buts & BUTTON_3)) {
-    if ((str_ld_debounce == 1) ) {
-      if ((millis() - timer_str_ld) > 500) {
-        if (dpad & DPAD_UP)
-          save_state_handler(savestate_name);
-        if (dpad & DPAD_DOWN)
-          load_state_handler(savestate_name);
-        if (dpad & DPAD_RIGHT) {
-          brightness *= 2;
-          if (brightness > 1024)
-            brightness = 1024;
-          set_brightness(brightness - 1);
-        }
-        if (dpad & DPAD_LEFT) {
-          brightness /= 2;
-          if (brightness < 16)
-            brightness = 16;
-          set_brightness(brightness - 1);
-        }
-        str_ld_debounce = 0;
-      }
-      // undo all buttons to not interfere with the game
-      buts = 0;
-      dpad = 0;
-    } else {
-      timer_str_ld = millis();
-      str_ld_debounce = 1;
-    }
-  } else {
-    str_ld_debounce = 0;
-  }
-#endif
-}
-
 static bool reset_handler(bool hard)
 {
     S9xReset();
@@ -333,20 +295,20 @@ int main(void)
   Settings.SoundInputRate = AUDIO_SAMPLE_RATE;
 #endif
 
-    if (!S9xInitMemory())
-        emu_panic("Memory init failed!\n");
+  if (!S9xInitMemory())
+      emu_panic("Memory init failed!\n");
 
-    if (!S9xInitDisplay())
-        emu_panic("Display init failed!\n");
+  if (!S9xInitDisplay())
+      emu_panic("Display init failed!\n");
 
-    if (!S9xInitAPU())
-        emu_panic("APU init failed!\n");
+  if (!S9xInitAPU())
+      emu_panic("APU init failed!\n");
 
-    if (!S9xInitSound(0, 0))
-        emu_panic("Sound init failed!\n");
+  if (!S9xInitSound(0, 0))
+      emu_panic("Sound init failed!\n");
 
-    if (!S9xInitGFX())
-        emu_panic("Graphics init failed!\n");
+  if (!S9xInitGFX())
+      emu_panic("Graphics init failed!\n");
 
   emumgr_menu(fb_back);
 
@@ -393,12 +355,10 @@ int main(void)
 #endif
 
     while (1) {
-      //check_load_save();
-      
       ctrl_button_state_update();
       if (ctrl_is_pressed(BUTTON_SW))
-        pwr_shutdown();
-
+        emumgr_menu(fb_back);
+        
       if (ctrl_is_pressed(BUTTON_L)) {
         manual_framedrop = 1;
         manual_framedrop_cnt = 0;
@@ -512,6 +472,7 @@ int main(void)
     bat_volt = pwr_get_bat_vol();
 
     frame_no++;
+    #if 0
     if (millis() - fps_timer > 1000) {
       printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, target_fps);
       printf("GPIO 43: %d\n", analog_read(43));
@@ -538,6 +499,7 @@ int main(void)
       printf("ANA X: %d\n", analog_read(PIN_ANALOG_X));
       printf("ANA Y: %d\n", analog_read(PIN_ANALOG_Y));
     }
+    #endif
 
   }
 }
