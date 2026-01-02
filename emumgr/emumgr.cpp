@@ -822,6 +822,11 @@ int selection_menu(char* item_list, gbuffer_t fb) {
     max_vis_items = num_itms;
   int first_run = 1;
 
+  uint32_t h_font_scrl_timer = millis() + 1000;
+  int h_font_scrl_pos = 0;
+  int h_font_scrl_dir = 1;
+  uint32_t h_font_scrl_delay = 1000;
+
   if (gbuf_create(&fb_font, menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR, menu_height, (void*) sfe_mem_malloc((menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR) * menu_height * 2)) != BUF_SUCCESS) {
     message("error: no psram"); 
     cur_itm = -1;
@@ -849,9 +854,33 @@ int selection_menu(char* item_list, gbuffer_t fb) {
       if (cur_itm < ofs_itm)
         ofs_itm--;
 
-      color_t font_color = (i + ofs_itm) == cur_itm ? menu_font_selected_color : menu_font_unselected_color; 
-      font_write_string(1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, get_item(i + 1 + ofs_itm, item_list) , menu_font, fb_font);
-      font_write_string(0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), font_color, get_item(i + 1 + ofs_itm, item_list) , menu_font, fb_font);
+      char* text = get_item(i + 1 + ofs_itm, item_list);
+      
+      if ((i + ofs_itm) == cur_itm) {
+        // horizontal scrolling of long entries (e.g. file names)
+        int len = font_get_string_width(text, menu_font);
+        if (millis() - h_font_scrl_timer > h_font_scrl_delay) {
+          h_font_scrl_delay = 30;
+          h_font_scrl_timer = millis();
+          if (h_font_scrl_dir == 1) {
+            if (len + h_font_scrl_pos > (menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR))
+              h_font_scrl_pos--;
+            else
+              h_font_scrl_dir = -1;
+          } else {
+            if (h_font_scrl_pos < 0)
+              h_font_scrl_pos++;
+            else
+              h_font_scrl_dir = 1;
+          }
+        }
+
+        font_write_string(h_font_scrl_pos + 1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
+        font_write_string(h_font_scrl_pos + 0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_selected_color, text, menu_font, fb_font);
+      } else {
+        font_write_string(1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
+        font_write_string(0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_unselected_color, text, menu_font, fb_font);
+      }
 
     }
 
@@ -914,11 +943,21 @@ int selection_menu(char* item_list, gbuffer_t fb) {
         ctrl_is_pressed(BUTTON_SW))
       goto leave;
 
-    if (ctrl_is_pressed(BUTTON_DOWN) && !b_debounce && (cur_itm < (num_itms - 1)))
+    if (ctrl_is_pressed(BUTTON_DOWN) && !b_debounce && (cur_itm < (num_itms - 1))) {
       cur_itm++;
+      h_font_scrl_timer = millis();
+      h_font_scrl_pos = 0;
+      h_font_scrl_dir = 1;
+      h_font_scrl_delay = 1000;
+    }
 
-    if (ctrl_is_pressed(BUTTON_UP) && !b_debounce && (cur_itm > 0))
+    if (ctrl_is_pressed(BUTTON_UP) && !b_debounce && (cur_itm > 0)) {
       cur_itm--;
+      h_font_scrl_timer = millis();
+      h_font_scrl_pos = 0;
+      h_font_scrl_dir = 1;
+      h_font_scrl_delay = 1000;
+    }
 
     if (!ctrl_is_pressed(BUTTON_ANY)) {
       b_debounce = 0;
