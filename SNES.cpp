@@ -52,6 +52,7 @@ LCD_DPI lcd = LCD_DPI();
 
 int brightness = 64;
 gbuffer_t fb_back;
+extern emulator_state_t emulator_state;
 
 /* ---------- LCD END ------------*/
 
@@ -67,7 +68,6 @@ mutex_t audio_generate;
 #define NUM_ADUDIO_BUF (3)
 #define AUDIO_SAMPLE_RATE (16000)  // 32000 is (of course) slower
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
-volatile int volume = 1;
 #ifdef AUDIO_ENABLE
 int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE / 47] __attribute__((aligned(4))); // 4 kb
 #endif
@@ -193,15 +193,27 @@ void core1task() {
     while (!mutex_try_enter(&audio_generate, NULL))
       tight_loop_contents();
 
-    S9xMixSamples(audio_buf_9x, buffer_length * 2);
+    if (emulator_state.volume) {
+      if (emulator_state.muted) {
+        emulator_state.muted = 0;
+        snd_unmute();
+      }
 
-    for (int i = 0; i < buffer_length; i++)
-      audio_buf[cur_audio_buf][i] = audio_buf_9x[i * 2] / volume;
+      S9xMixSamples(audio_buf_9x, buffer_length * 2);
 
-    cur_audio_buf++;
-    cur_audio_buf %= NUM_ADUDIO_BUF;    
+      for (int i = 0; i < buffer_length; i++)
+        audio_buf[cur_audio_buf][i] = audio_buf_9x[i * 2] / (6 - emulator_state.volume / 2);
 
-    snd_enqueue_buffer_blocking(audio_buf[cur_audio_buf], buffer_length);
+      cur_audio_buf++;
+      cur_audio_buf %= NUM_ADUDIO_BUF;    
+
+      snd_enqueue_buffer_blocking(audio_buf[cur_audio_buf], buffer_length);
+    } else {
+      if (!emulator_state.muted) {
+        emulator_state.muted = 1;
+        snd_mute();
+      }
+    }
 
   }
 #endif
@@ -472,15 +484,8 @@ int main(void)
     bat_volt = pwr_get_bat_vol();
 
     frame_no++;
-    #if 0
     if (millis() - fps_timer > 1000) {
-      printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, target_fps);
-      printf("GPIO 43: %d\n", analog_read(43));
-      printf("GPIO 44: %d\n", analog_read(44));
-      dfps = dropped_frames;
-      dropped_frames = 0;
-      frame_no = 0;
-      fps_timer = millis();
+    #if 0
       printf("Bat vol: %d\n", pwr_get_bat_vol());
       printf("Power src: %d\n", pwr_get_source());
       printf("A: %d\n", ctrl_is_pressed(BUTTON_A));
@@ -498,8 +503,15 @@ int main(void)
       printf("DOWN: %d %d\n", ctrl_is_pressed(BUTTON_DOWN), analog_read(PIN_DPAD_UD));
       printf("ANA X: %d\n", analog_read(PIN_ANALOG_X));
       printf("ANA Y: %d\n", analog_read(PIN_ANALOG_Y));
-    }
+      printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, target_fps);
+      printf("GPIO 43: %d\n", analog_read(43));
+      printf("GPIO 44: %d\n", analog_read(44));
     #endif
+      dfps = dropped_frames;
+      dropped_frames = 0;
+      frame_no = 0;
+      fps_timer = millis();
+    }
 
   }
 }

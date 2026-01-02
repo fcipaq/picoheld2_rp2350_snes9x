@@ -198,7 +198,7 @@ static void Op73M0(void)
 }
 
 /* AND */
-static void __not_in_flash_func(Op29M1)(void)
+static void NOT_IN_FLASH_FUNC(Op29M1)(void)
 {
    ICPU.Registers.AL &= *CPU.PC++;
 #ifndef SA1_OPCODES
@@ -207,7 +207,7 @@ static void __not_in_flash_func(Op29M1)(void)
    SetZN8(ICPU.Registers.AL);
 }
 
-static void __not_in_flash_func(Op29M0)(void)
+static void NOT_IN_FLASH_FUNC(Op29M0)(void)
 {
 #ifdef FAST_LSB_WORD_ACCESS
    ICPU.Registers.A.W &= *(uint16_t*) CPU.PC;
@@ -221,13 +221,13 @@ static void __not_in_flash_func(Op29M0)(void)
    SetZN16(ICPU.Registers.A.W);
 }
 
-static void __not_in_flash_func(Op25M1)(void)
+static void NOT_IN_FLASH_FUNC(Op25M1)(void)
 {
    Direct(true);
    AND8();
 }
 
-static void __not_in_flash_func(Op25M0)(void)
+static void NOT_IN_FLASH_FUNC(Op25M0)(void)
 {
    Direct(true);
    AND16();
@@ -449,7 +449,7 @@ static void Op1EM0(void)
 }
 
 /* BIT */
-static void __not_in_flash_func(Op89M1)(void)
+static void NOT_IN_FLASH_FUNC(Op89M1)(void)
 {
    ICPU._Zero = ICPU.Registers.AL & *CPU.PC++;
 #ifndef SA1_OPCODES
@@ -457,7 +457,7 @@ static void __not_in_flash_func(Op89M1)(void)
 #endif
 }
 
-static void __not_in_flash_func(Op89M0)(void)
+static void NOT_IN_FLASH_FUNC(Op89M0)(void)
 {
 #ifdef FAST_LSB_WORD_ACCESS
    ICPU._Zero = (ICPU.Registers.A.W & *(uint16_t*) CPU.PC) != 0;
@@ -519,7 +519,7 @@ static void Op3CM0(void)
 }
 
 /* CMP */
-static void __not_in_flash_func(OpC9M1)(void)
+static void NOT_IN_FLASH_FUNC(OpC9M1)(void)
 {
    int32_t Int32 = (int32_t) ICPU.Registers.AL - (int32_t) *CPU.PC++;
    ICPU._Carry = Int32 >= 0;
@@ -529,7 +529,7 @@ static void __not_in_flash_func(OpC9M1)(void)
 #endif
 }
 
-static void __not_in_flash_func(OpC9M0)(void)
+static void NOT_IN_FLASH_FUNC(OpC9M0)(void)
 {
 #ifdef FAST_LSB_WORD_ACCESS
    int32_t Int32 = (int32_t) ICPU.Registers.A.W - (int32_t) *(uint16_t*)CPU.PC;
@@ -773,7 +773,7 @@ static void OpC0X1(void)
 #endif
 }
 
-static void __not_in_flash_func(OpC0X0)(void)
+static void NOT_IN_FLASH_FUNC(OpC0X0)(void)
 {
 #ifdef FAST_LSB_WORD_ACCESS
    int32_t Int32 = (int32_t) ICPU.Registers.Y.W - (int32_t) *(uint16_t*)CPU.PC;
@@ -823,13 +823,13 @@ static void Op3AM0(void)
    A_DEC16();
 }
 
-static void __not_in_flash_func(OpC6M1)(void)
+static void NOT_IN_FLASH_FUNC(OpC6M1)(void)
 {
    Direct(true);
    DEC8();
 }
 
-static void __not_in_flash_func(OpC6M0)(void)
+static void NOT_IN_FLASH_FUNC(OpC6M0)(void)
 {
    Direct(true);
    DEC16();
@@ -872,7 +872,7 @@ static void OpDEM0(void)
 }
 
 /* EOR */
-static void __not_in_flash_func(Op49M1)(void)
+static void NOT_IN_FLASH_FUNC(Op49M1)(void)
 {
    ICPU.Registers.AL ^= *CPU.PC++;
 #ifndef SA1_OPCODES
@@ -881,7 +881,7 @@ static void __not_in_flash_func(Op49M1)(void)
    SetZN8(ICPU.Registers.AL);
 }
 
-static void __not_in_flash_func(Op49M0)(void)
+static void NOT_IN_FLASH_FUNC(Op49M0)(void)
 {
 #ifdef FAST_LSB_WORD_ACCESS
    ICPU.Registers.A.W ^= *(uint16_t*) CPU.PC;
@@ -1074,13 +1074,13 @@ static void Op1AM0(void)
    A_INC16();
 }
 
-static void __not_in_flash_func(OpE6M1)(void)
+static void NOT_IN_FLASH_FUNC(OpE6M1)(void)
 {
    Direct(true);
    INC8();
 }
 
-static void __not_in_flash_func(OpE6M0)(void)
+static void NOT_IN_FLASH_FUNC(OpE6M0)(void)
 {
    Direct(true);
    INC16();
@@ -1123,7 +1123,7 @@ static void OpFEM0(void)
 }
 
 /* LDA */
-static void __not_in_flash_func(OpA9M1)(void)
+static void NOT_IN_FLASH_FUNC(OpA9M1)(void)
 {
    ICPU.Registers.AL = *CPU.PC++;
 #ifndef SA1_OPCODES
@@ -1132,7 +1132,7 @@ static void __not_in_flash_func(OpA9M1)(void)
    SetZN8(ICPU.Registers.AL);
 }
 
-static void __not_in_flash_func(OpA9M0)(void)
+static void NOT_IN_FLASH_FUNC(OpA9M0)(void)
 {
 #ifdef FAST_LSB_WORD_ACCESS
    ICPU.Registers.A.W = *(uint16_t*) CPU.PC;
@@ -1147,13 +1147,13 @@ static void __not_in_flash_func(OpA9M0)(void)
    SetZN16(ICPU.Registers.A.W);
 }
 
-static void __not_in_flash_func(OpA5M1)(void)
+static void NOT_IN_FLASH_FUNC(OpA5M1)(void)
 {
    Direct(true);
    LDA8();
 }
 
-static void __not_in_flash_func(OpA5M0)(void)
+static void NOT_IN_FLASH_FUNC(OpA5M0)(void)
 {
    Direct(true);
    LDA16();
@@ -1231,13 +1231,13 @@ static void OpB7M0(void)
    LDA16();
 }
 
-static void __not_in_flash_func(OpADM1)(void)
+static void NOT_IN_FLASH_FUNC(OpADM1)(void)
 {
    Absolute(true);
    LDA8();
 }
 
-static void __not_in_flash_func(OpADM0)(void)
+static void NOT_IN_FLASH_FUNC(OpADM0)(void)
 {
    Absolute(true);
    LDA16();
@@ -1316,7 +1316,7 @@ static void OpB3M0(void)
 }
 
 /* LDX */
-static void __not_in_flash_func(OpA2X1)(void)
+static void NOT_IN_FLASH_FUNC(OpA2X1)(void)
 {
    ICPU.Registers.XL = *CPU.PC++;
 #ifndef SA1_OPCODES
@@ -1325,7 +1325,7 @@ static void __not_in_flash_func(OpA2X1)(void)
    SetZN8(ICPU.Registers.XL);
 }
 
-static void __not_in_flash_func(OpA2X0)(void)
+static void NOT_IN_FLASH_FUNC(OpA2X0)(void)
 {
 #ifdef FAST_LSB_WORD_ACCESS
    ICPU.Registers.X.W = *(uint16_t*) CPU.PC;
@@ -1388,7 +1388,7 @@ static void OpBEX0(void)
 }
 
 /* LDY */
-static void __not_in_flash_func(OpA0X1)(void)
+static void NOT_IN_FLASH_FUNC(OpA0X1)(void)
 {
    ICPU.Registers.YL = *CPU.PC++;
 #ifndef SA1_OPCODES
@@ -1397,7 +1397,7 @@ static void __not_in_flash_func(OpA0X1)(void)
    SetZN8(ICPU.Registers.YL);
 }
 
-static void __not_in_flash_func(OpA0X0)(void)
+static void NOT_IN_FLASH_FUNC(OpA0X0)(void)
 {
 #ifdef FAST_LSB_WORD_ACCESS
    ICPU.Registers.Y.W = *(uint16_t*) CPU.PC;
@@ -1520,7 +1520,7 @@ static void Op5EM0(void)
 }
 
 /* ORA */
-static void __not_in_flash_func(Op09M1)(void)
+static void NOT_IN_FLASH_FUNC(Op09M1)(void)
 {
    ICPU.Registers.AL |= *CPU.PC++;
 #ifndef SA1_OPCODES
@@ -1529,7 +1529,7 @@ static void __not_in_flash_func(Op09M1)(void)
    SetZN8(ICPU.Registers.AL);
 }
 
-static void __not_in_flash_func(Op09M0)(void)
+static void NOT_IN_FLASH_FUNC(Op09M0)(void)
 {
 #ifdef FAST_LSB_WORD_ACCESS
    ICPU.Registers.A.W |= *(uint16_t*) CPU.PC;
@@ -2011,13 +2011,13 @@ static void OpF3M0(void)
 }
 
 /* STA */
-static void __not_in_flash_func(Op85M1)(void)
+static void NOT_IN_FLASH_FUNC(Op85M1)(void)
 {
    Direct(false);
    STA8();
 }
 
-static void __not_in_flash_func(Op85M0)(void)
+static void NOT_IN_FLASH_FUNC(Op85M0)(void)
 {
    Direct(false);
    STA16();
@@ -2103,13 +2103,13 @@ static void Op97M0(void)
    STA16();
 }
 
-static void __not_in_flash_func(Op8DM1)(void)
+static void NOT_IN_FLASH_FUNC(Op8DM1)(void)
 {
    Absolute(false);
    STA8();
 }
 
-static void __not_in_flash_func(Op8DM0)(void)
+static void NOT_IN_FLASH_FUNC(Op8DM0)(void)
 {
    Absolute(false);
    STA16();
@@ -2444,7 +2444,7 @@ static INLINE void ForceShutdown(void)
 }
 
 /* BCC */
-static void __not_in_flash_func(Op90)(void)
+static void NOT_IN_FLASH_FUNC(Op90)(void)
 {
    Relative();
    BranchCheck();
@@ -2459,7 +2459,7 @@ static void __not_in_flash_func(Op90)(void)
 }
 
 /* BCS */
-static void __not_in_flash_func(OpB0)(void)
+static void NOT_IN_FLASH_FUNC(OpB0)(void)
 {
    Relative();
    BranchCheck();
@@ -2474,7 +2474,7 @@ static void __not_in_flash_func(OpB0)(void)
 }
 
 /* BEQ */
-static void __not_in_flash_func(OpF0)(void)
+static void NOT_IN_FLASH_FUNC(OpF0)(void)
 {
    Relative();
    BranchCheck();
@@ -2504,7 +2504,7 @@ static void Op30(void)
 }
 
 /* BNE */
-static void __not_in_flash_func(OpD0)(void)
+static void NOT_IN_FLASH_FUNC(OpD0)(void)
 {
    Relative();
    BranchCheck();
@@ -2519,7 +2519,7 @@ static void __not_in_flash_func(OpD0)(void)
 }
 
 /* BPL */
-static void __not_in_flash_func(Op10)(void)
+static void NOT_IN_FLASH_FUNC(Op10)(void)
 {
    Relative();
    BranchCheck();
@@ -2534,7 +2534,7 @@ static void __not_in_flash_func(Op10)(void)
 }
 
 /* BRA */
-static void __not_in_flash_func(Op80)(void)
+static void NOT_IN_FLASH_FUNC(Op80)(void)
 {
    Relative();
    CPU.PC = CPU.PCBase + OpAddress;
@@ -3252,7 +3252,7 @@ static void Op98M1(void)
    SetZN8(ICPU.Registers.AL);
 }
 
-static void __not_in_flash_func(Op98M0)(void)
+static void NOT_IN_FLASH_FUNC(Op98M0)(void)
 {
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
@@ -3261,7 +3261,7 @@ static void __not_in_flash_func(Op98M0)(void)
    SetZN16(ICPU.Registers.A.W);
 }
 
-static void __not_in_flash_func(OpBBX1)(void)
+static void NOT_IN_FLASH_FUNC(OpBBX1)(void)
 {
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
@@ -3270,7 +3270,7 @@ static void __not_in_flash_func(OpBBX1)(void)
    SetZN8(ICPU.Registers.XL);
 }
 
-static void __not_in_flash_func(OpBBX0)(void)
+static void NOT_IN_FLASH_FUNC(OpBBX0)(void)
 {
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
@@ -3280,7 +3280,7 @@ static void __not_in_flash_func(OpBBX0)(void)
 }
 
 /* XCE */
-static void __not_in_flash_func(OpFB)(void)
+static void NOT_IN_FLASH_FUNC(OpFB)(void)
 {
    uint8_t A1, A2;
 #ifndef SA1_OPCODES
@@ -3305,7 +3305,7 @@ static void __not_in_flash_func(OpFB)(void)
 }
 
 /* BRK */
-static void __not_in_flash_func(Op00)(void)
+static void NOT_IN_FLASH_FUNC(Op00)(void)
 {
    if (!CheckEmulation())
    {
@@ -3350,7 +3350,7 @@ static void Op82(void)
 }
 
 /* IRQ */
-void __not_in_flash_func(S9xOpcode_IRQ)(void)
+void NOT_IN_FLASH_FUNC(S9xOpcode_IRQ)(void)
 {
    if (!CheckEmulation())
    {
@@ -3398,7 +3398,7 @@ void __not_in_flash_func(S9xOpcode_IRQ)(void)
 }
 
 /* NMI */
-void __not_in_flash_func(S9xOpcode_NMI)(void)
+void NOT_IN_FLASH_FUNC(S9xOpcode_NMI)(void)
 {
    if (!CheckEmulation())
    {
@@ -3446,7 +3446,7 @@ void __not_in_flash_func(S9xOpcode_NMI)(void)
 }
 
 /* COP */
-static void __not_in_flash_func(Op02)(void)
+static void NOT_IN_FLASH_FUNC(Op02)(void)
 {
    if (!CheckEmulation())
    {
@@ -3484,7 +3484,7 @@ static void __not_in_flash_func(Op02)(void)
 }
 
 /* JML */
-static void __not_in_flash_func(OpDC)(void)
+static void NOT_IN_FLASH_FUNC(OpDC)(void)
 {
    AbsoluteIndirectLong(false);
    ICPU.Registers.PB = (uint8_t)(OpAddress >> 16);
@@ -3495,7 +3495,7 @@ static void __not_in_flash_func(OpDC)(void)
 #endif
 }
 
-static void __not_in_flash_func(Op5C)(void)
+static void NOT_IN_FLASH_FUNC(Op5C)(void)
 {
    AbsoluteLong(false);
    ICPU.Registers.PB = (uint8_t)(OpAddress >> 16);
@@ -3504,7 +3504,7 @@ static void __not_in_flash_func(Op5C)(void)
 }
 
 /* JMP */
-static void __not_in_flash_func(Op4C)(void)
+static void NOT_IN_FLASH_FUNC(Op4C)(void)
 {
    Absolute(false);
    S9xSetPCBase(ICPU.ShiftedPB + (OpAddress & 0xffff));
@@ -3513,7 +3513,7 @@ static void __not_in_flash_func(Op4C)(void)
 #endif
 }
 
-static void __not_in_flash_func(Op6C)(void)
+static void NOT_IN_FLASH_FUNC(Op6C)(void)
 {
    AbsoluteIndirect(false);
    S9xSetPCBase(ICPU.ShiftedPB + (OpAddress & 0xffff));
@@ -3953,7 +3953,7 @@ static void Op42(void)
 }
 
 /* CPU-S9xOpcodes Definitions */
-SOpcodes S9xOpcodesM1X1[256] __attribute__((section(".scratch_x.parity"))) =
+SOpcodes S9xOpcodesM1X1[256] SCRATCH_X =
 {
    {Op00},      {Op01M1},    {Op02},      {Op03M1},    {Op04M1},
    {Op05M1},    {Op06M1},    {Op07M1},    {Op08},      {Op09M1},
@@ -4009,7 +4009,7 @@ SOpcodes S9xOpcodesM1X1[256] __attribute__((section(".scratch_x.parity"))) =
    {OpFFM1}
 };
 
-SOpcodes S9xOpcodesE1[256] __attribute__((section(".scratch_x.parity"))) =
+SOpcodes S9xOpcodesE1[256] SCRATCH_X =
 {
     {Op00},	     {Op01M1},    {Op02},      {Op03M1},    {Op04M1},
     {Op05M1},    {Op06M1},    {Op07M1},    {Op08E1},    {Op09M1},
@@ -4121,7 +4121,7 @@ const SOpcodes S9xOpcodesM1X0[256] =
    {OpFFM1}
 };
 
-SOpcodes S9xOpcodesM0X0[256] __attribute__((section(".scratch_y.parity"))) =
+SOpcodes S9xOpcodesM0X0[256] SCRATCH_Y =
 {
    {Op00},  {Op01M0},    {Op02},      {Op03M0},    {Op04M0},
    {Op05M0},    {Op06M0},    {Op07M0},    {Op08},      {Op09M0},
@@ -4177,7 +4177,7 @@ SOpcodes S9xOpcodesM0X0[256] __attribute__((section(".scratch_y.parity"))) =
    {OpFFM0}
 };
 
-SOpcodes S9xOpcodesM0X1[256] __attribute__((section(".scratch_y.parity"))) =
+SOpcodes S9xOpcodesM0X1[256] SCRATCH_Y =
 {
    {Op00},  {Op01M0},    {Op02},      {Op03M0},    {Op04M0},
    {Op05M0},    {Op06M0},    {Op07M0},    {Op08},      {Op09M0},

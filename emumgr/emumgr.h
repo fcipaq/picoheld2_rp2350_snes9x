@@ -22,7 +22,8 @@
 #define EMUMGR_H
 
 typedef struct {
-  int volume;
+  volatile int volume;
+  volatile bool muted;
   int brightness;
   void* psram_rom;
 } emulator_state_t;

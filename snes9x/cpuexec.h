@@ -3,6 +3,16 @@
 #ifndef _CPUEXEC_H_
 #define _CPUEXEC_H_
 
+#if 1
+#define SCRATCH_X __attribute__((section(".scratch_x.parity")))
+#define SCRATCH_Y __attribute__((section(".scratch_y.parity")))
+#define NOT_IN_FLASH_FUNC __not_in_flash_func
+#else
+#define SCRATCH_X
+#define SCRATCH_Y
+#define NOT_IN_FLASH_FUNC
+#endif
+
 typedef struct
 {
    void (*S9xOpcode)(void);
@@ -36,11 +46,11 @@ void S9xDoHBlankProcessing(void);
 void S9xClearIRQ(uint32_t source);
 void S9xSetIRQ(uint32_t source);
 
-extern SOpcodes S9xOpcodesE1   [256] __attribute__((section(".scratch_x.parity")));
-extern SOpcodes S9xOpcodesM1X1 [256] __attribute__((section(".scratch_x.parity")));
+extern SOpcodes S9xOpcodesE1   [256] SCRATCH_X;
+extern SOpcodes S9xOpcodesM1X1 [256] SCRATCH_X;
 extern const SOpcodes S9xOpcodesM1X0 [256];
-extern SOpcodes S9xOpcodesM0X1 [256] __attribute__((section(".scratch_y.parity")));
-extern SOpcodes S9xOpcodesM0X0 [256] __attribute__((section(".scratch_y.parity")));
+extern SOpcodes S9xOpcodesM0X1 [256] SCRATCH_Y;
+extern SOpcodes S9xOpcodesM0X0 [256] SCRATCH_Y;
 
 extern SICPU ICPU;
 

@@ -55,6 +55,26 @@ void blit_buf(coord_t kx,
               gbuffer_t dst);
 
 /**
+ * @brief  Blits a source buffer to a destination buffer and blends them together (50% each).
+ *
+ * @note   alpha must equal either `BLIT_NO_ALPHA` (no alpha channel) or the
+ *         color that shall be transparent
+ *
+ * @param[in] kx: x coordinate of the upper left corner
+ * @param[in] ky: y coordinate of the upper left corner
+ * @param[in] alpha: color which is NOT being drawn (`BLIT_NO_ALPHA` for no transparency)
+ * @param[in] src: ptr to the source buffer that is supposed to be blitted
+ * @param[in] dst: ptr to destination buffer where the source buffer shall be blitted to
+ */
+ #if LCD_COLORDEPTH==16
+void blit_buf_blend(coord_t kx,
+                    coord_t ky,
+                    int32_t alpha,
+                    int opacity,
+                    gbuffer_t src,
+                    gbuffer_t dst);
+                      
+/**
  * @brief  Blits a source buffer to a destination buffer and rotates/zoomes it.
  *
  * @note   alpha must equal either `BLIT_NO_ALPHA` (no alpha channel) or the
@@ -69,9 +89,12 @@ void blit_buf(coord_t kx,
  * @param[in] zoom: factor (same in both directions)
  * @param[in] rot: of the image (in rad)
  * @param[in] alpha: color which is NOT being drawn (`BLIT_NO_ALPHA` for no transparency)
+ * @param[in] opacity: opacity of the source image. 100 is full opacity
  * @param[in] src: ptr to the source buffer that is supposed to be blitted
  * @param[in] dst: ptr to destination buffer where the source buffer shall be blitted to
  */
+ #endif
+
 void blit_buf(coord_t kx,
               coord_t ky,
               float zoom,

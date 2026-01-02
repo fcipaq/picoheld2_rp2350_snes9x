@@ -27,7 +27,7 @@
 
 /* Pico Held hw library */
 #include <picoengine.h>
-#include <fonts/fontfiles/f8x11.h>
+#include <fonts/fontfiles/pixelmix_14_16.h>
 
 #include "hardware/flash.h"
 #include "pico/bootrom.h"
@@ -35,6 +35,9 @@
 #include "emumgr.h"
 #include "emumgr_lang_de.h"
 //#include "emumgr_lang_en.h"
+
+// assets
+#include "../assets/rect.h"
 
 extern "C" {
 /* Snes9x */
@@ -60,16 +63,27 @@ extern LCD_DPI lcd;
 FATFS fs_handle;
 bool m_sd_init = false;
 emulator_state_t emulator_state;
+bool rom_loaded;
 /* ====================================================== end variables ====================================================== */
 
 #define MENU_FONT pixelmix_14_16
 //#define MENU_FONT font_13x16
+//#define MENU_FONT font_8x11
+
+#define MENU_FONT_SHADOW_COLOR rgb_col_888_565(30, 30, 30)
+#define MENU_FONT_SELECTED_COLOR rgb_col_888_565(230, 0, 200)
+#define MENU_FONT_UNSELECTED_COLOR rgb_col_888_565(200, 200, 200)
+#define MENU_FONT_CAPTION_COLOR rgb_col_888_565(200, 200, 200)
 
 #define MENU_REPEAT_START (500)
 #define MENU_REPEAT_DELAY (100)
 
 #define MENU_OFFSET_X (30)
 #define MENU_OFFSET_Y (30)
+#define MENU_BORDERS_X (10)
+#define MENU_BORDERS_Y (10)
+
+#define MENU_MARGIN_VERTICAL_SCROLLBAR (15)
 
 #define MENU_MAX_ITEMS (100)
 #define MENU_MAX_DIR_ITEMS (100)
@@ -143,19 +157,7 @@ const char* load_menu_items[] = { STR_LOAD_STATE,
 
 const char* bri_menu = STR_BRIGHTNESS;
 
-const char* snd_menu_items[] = { STR_SOUND,
-                                                           STR_0"\0"\
-                                                           STR_20"\0"\
-                                                           STR_30"\0"\
-                                                           STR_40"\0"\
-                                                           STR_50"\0"\
-                                                           STR_60"\0"\
-                                                           STR_70"\0"\
-                                                           STR_80"\0"\
-                                                           STR_90"\0"\
-                                                           STR_100"\0"\
-                                                           STR_GO_BACK"\0"\
-                                                           MENU_LST };
+const char* snd_menu = STR_SOUND;
 
 const char* btn_menu_items[] = { STR_BTN_MENU,
 														   STR_BTN_ABC,
@@ -704,11 +706,13 @@ int get_directory(char *path, char* buffer) {
 
 int slider_menu(char* caption, int start_val, int step, gbuffer_t fb) {
   gbuffer_t fb_back;
-  lcd.get_backbuffer(&fb_back);
 
-  font_t* menu_font = (font_t*) font_8x11;
+  color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
+  color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
+
+  font_t* menu_font = (font_t*) MENU_FONT;
   int menu_offset_x = MENU_OFFSET_X;
-  int menu_width = gbuf_get_width(fb_back) - 2 * menu_offset_x;
+  int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
   int bar_height = 10;
   int menu_height = font_get_height(menu_font) + bar_height;
 
@@ -723,6 +727,8 @@ int slider_menu(char* caption, int start_val, int step, gbuffer_t fb) {
     step = 10;
 
   while (1) {
+    lcd.get_backbuffer(&fb_back);
+    blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
 
     ctrl_button_state_update();
 
@@ -748,13 +754,16 @@ int slider_menu(char* caption, int start_val, int step, gbuffer_t fb) {
     if (value > 100)
       value = 100;
 
-    if (ctrl_is_pressed(BUTTON_A))
-      return value;
-
-    if (ctrl_is_pressed(BUTTON_B) ||
+    if (ctrl_is_pressed(BUTTON_A) ||
+        ctrl_is_pressed(BUTTON_B) ||
         ctrl_is_pressed(BUTTON_X) ||
-        ctrl_is_pressed(BUTTON_Y))
-      return start_val;
+        ctrl_is_pressed(BUTTON_Y) ||
+        ctrl_is_pressed(BUTTON_L) ||
+        ctrl_is_pressed(BUTTON_R) ||
+        ctrl_is_pressed(BUTTON_ST) ||
+        ctrl_is_pressed(BUTTON_SEL) ||
+        ctrl_is_pressed(BUTTON_SW))
+      return value;
 
     if (!ctrl_is_pressed(BUTTON_ANY)) {
       b_debounce = 0;
@@ -773,29 +782,32 @@ int slider_menu(char* caption, int start_val, int step, gbuffer_t fb) {
       }
     }
 
-    draw_rect_fill(menu_offset_x, gbuf_get_height(fb_back) / 2 - 50, menu_offset_x + menu_width, gbuf_get_height(fb_back) / 2 + 50, 0xaffe, fb_back);
+    blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_small)) / 2, 0xf81f, 90, rect_image_small, fb_back);
 
-    font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, 0xffff, caption, menu_font, fb_back);
+    font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, caption, menu_font, fb_back);
+    font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, caption, menu_font, fb_back);
 
-    draw_rect_fill(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 5, menu_offset_x + 10 + (menu_width - 20) * value / 100, gbuf_get_height(fb_back) / 2 + 5, 0xffff, fb_back);
+    draw_rect_fill(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, menu_offset_x + 10 + (menu_width - 20) * value / 100, gbuf_get_height(fb_back) / 2 + 10, 0xffff, fb_back);
 
     lcd.request_pageflip();
-    lcd.get_backbuffer(&fb_back);
   }
 
 }
 
 int selection_menu(char* item_list, gbuffer_t fb) {
-  gbuffer_t fb_back;
-  lcd.get_backbuffer(&fb_back);
+  gbuffer_t fb_back, fb_font;
 
-  color_t color_shadow = 0xffff;
+  color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
+  color_t menu_font_selected_color = MENU_FONT_SELECTED_COLOR;
+  color_t menu_font_unselected_color = MENU_FONT_UNSELECTED_COLOR;
+  color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
+
   float menu_caption_offset = 1.2;
-  int menu_offset_x = MENU_OFFSET_X;
-  int menu_offset_y = MENU_OFFSET_Y;
-  int menu_width = gbuf_get_width(fb_back) - 2 * menu_offset_x;
-  int menu_height = gbuf_get_height(fb_back) - 2 * menu_offset_y;
-  font_t* menu_font = (font_t*) font_8x11;
+  int menu_offset_x = (gbuf_get_width(fb) - gbuf_get_width(rect_image_big)) / 2 + MENU_BORDERS_X;
+  int menu_offset_y = (gbuf_get_height(fb) - gbuf_get_height(rect_image_big)) / 2 + MENU_BORDERS_Y;
+  int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
+  int menu_height = gbuf_get_height(fb) - 2 * menu_offset_y;
+  font_t* menu_font = (font_t*) MENU_FONT;
   int menu_items_clearance_y = 5;
   int max_vis_items = (menu_height - (font_get_height(menu_font) + menu_items_clearance_y) * menu_caption_offset) / (font_get_height(menu_font) + menu_items_clearance_y);
    
@@ -809,12 +821,24 @@ int selection_menu(char* item_list, gbuffer_t fb) {
   if (num_itms < max_vis_items)
     max_vis_items = num_itms;
   int first_run = 1;
+
+  if (gbuf_create(&fb_font, menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR, menu_height, (void*) sfe_mem_malloc((menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR) * menu_height * 2)) != BUF_SUCCESS) {
+    message("error: no psram"); 
+    cur_itm = -1;
+    goto leave;
+  }
   
   while (1) {
-    draw_rect_fill(menu_offset_x, menu_offset_y, menu_offset_x + menu_width, menu_offset_y + menu_height, 0xaffe, fb_back);
+    lcd.get_backbuffer(&fb_back);
+    blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
+
+    blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_big)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_big)) / 2, 0xf81f, 90, rect_image_big, fb_back);
     
     // caption
-    font_write_string_centered(menu_offset_x + menu_width / 2, menu_offset_y, 0x0, get_item(0, item_list), menu_font, fb_back);
+    font_write_string_centered(1 + menu_offset_x + menu_width / 2, 1 + menu_offset_y, menu_font_shadow_color, get_item(0, item_list), menu_font, fb_back);
+    font_write_string_centered(menu_offset_x + menu_width / 2, menu_offset_y, menu_font_caption_color, get_item(0, item_list), menu_font, fb_back);
+
+    draw_rect_fill(0, 0, menu_width - 1, menu_height - 1, 0xf81f, fb_font);
 
     for (int i = 0; i < max_vis_items; i++) {
       
@@ -825,10 +849,13 @@ int selection_menu(char* item_list, gbuffer_t fb) {
       if (cur_itm < ofs_itm)
         ofs_itm--;
 
-      color_t font_color = (i + ofs_itm) == cur_itm ? 0xdead : 0x0;
-      font_write_string(menu_offset_x, menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), font_color, get_item(i + 1 + ofs_itm, item_list) , menu_font, fb_back);
+      color_t font_color = (i + ofs_itm) == cur_itm ? menu_font_selected_color : menu_font_unselected_color; 
+      font_write_string(1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, get_item(i + 1 + ofs_itm, item_list) , menu_font, fb_font);
+      font_write_string(0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), font_color, get_item(i + 1 + ofs_itm, item_list) , menu_font, fb_font);
 
     }
+
+    blit_buf(menu_offset_x, menu_offset_y, 0xf81f, fb_font, fb_back);
 
     // scroll arrows to indicate additional items
     int scrl_up_arrow_y = menu_offset_y + menu_caption_offset * (font_get_height(menu_font) + menu_items_clearance_y);
@@ -877,14 +904,15 @@ int selection_menu(char* item_list, gbuffer_t fb) {
 
     // return selected item
     if (ctrl_is_pressed(BUTTON_A) ||
-        ctrl_is_pressed(BUTTON_ST))
-      return cur_itm;
-
-    // report user requested cancellation
-    if (ctrl_is_pressed(BUTTON_B) ||
+        ctrl_is_pressed(BUTTON_B) ||
         ctrl_is_pressed(BUTTON_X) ||
-        ctrl_is_pressed(BUTTON_Y))
-      return -1;
+        ctrl_is_pressed(BUTTON_Y) ||
+        ctrl_is_pressed(BUTTON_L) ||
+        ctrl_is_pressed(BUTTON_R) ||
+        ctrl_is_pressed(BUTTON_ST) ||
+        ctrl_is_pressed(BUTTON_SEL) ||
+        ctrl_is_pressed(BUTTON_SW))
+      goto leave;
 
     if (ctrl_is_pressed(BUTTON_DOWN) && !b_debounce && (cur_itm < (num_itms - 1)))
       cur_itm++;
@@ -910,8 +938,11 @@ int selection_menu(char* item_list, gbuffer_t fb) {
     }
 
     lcd.request_pageflip();
-    lcd.get_backbuffer(&fb_back);
   }
+
+leave:
+  if (gbuf_get_dat_ptr(fb_font))
+    sfe_mem_free((void*) gbuf_get_dat_ptr(fb_font));
 
   while (1) {
     ctrl_button_state_update();
@@ -920,13 +951,17 @@ int selection_menu(char* item_list, gbuffer_t fb) {
     sleep_ms(50);
   } 
 
+  return cur_itm;
+
 }
 
 int menu_loadfile(gbuffer_t fb) {
   char* buffer;
   int res = 0;
   int ret = 0;
-  buffer = (char*) sfe_mem_malloc(DIRECTORY_BUFFER_SIZE);
+  buffer = (char*) sfe_mem_malloc(DIRECTORY_BUFFER_SIZE + 1000);
+  char* filename = &buffer[DIRECTORY_BUFFER_SIZE];
+
   if (!buffer)
     return -2; // no free psram
 
@@ -946,7 +981,6 @@ int menu_loadfile(gbuffer_t fb) {
     goto bailout;
   }
 
-  char filename[512];
   strcpy(filename, ROM_DIRECTORY);
   strcat(filename, get_item(res + 1, buffer));
 
@@ -960,6 +994,7 @@ int menu_loadfile(gbuffer_t fb) {
   }
 
   S9xReset();
+
   for (int i = 0; i < SRAM_SIZE; i++)
     Memory.SRAM[i] = 0;
  
@@ -968,6 +1003,8 @@ int menu_loadfile(gbuffer_t fb) {
     ret = -5;  // error loading rom
     goto bailout;
   }
+
+  rom_loaded = true;
 
  bailout:
 
@@ -979,33 +1016,55 @@ int menu_loadfile(gbuffer_t fb) {
 
 void emumgr_menu(gbuffer_t fb) {
 
-//  gbuffer_t fb_saved;
+  gbuffer_t fb_saved;
   int res;
   int main_choice, sub_choice;
+  char* filename = (char*) sfe_mem_malloc(520);
+    
 
-//  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS)
-//    message("error: no psram");
+  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS)
+    message("error: no psram");
 
-  // save original screen contents
-//  blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_saved);
+  //save original screen contents
+  blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_saved);
 
+  snd_mute();
   sd_init();
 
+  int b_debounce = 1;
+
   while (1) {
-    main_choice = selection_menu((char*) main_menu_items, fb);
+    ctrl_button_state_update();
+    if (!ctrl_is_pressed(BUTTON_ANY))
+      b_debounce = 0;
+    
+    if (ctrl_is_pressed(BUTTON_SW) && !b_debounce)
+      goto leave;
+    
+    main_choice = selection_menu((char*) main_menu_items, fb_saved);
     switch (main_choice) {
       case 0:
+        if (rom_loaded)
+          goto leave;
+        else
+          message("choose rom first");
+
+        /*
         load_rom_from_sd("/roms/snes/Super Mario World (U) [!].smc");
 
         S9xReset();
           
         Memory.ROM_is_writable = true;
         LoadROM(NULL);
+
         goto leave;
+        */
+        
+        break;
       case 1:
-        sub_choice = selection_menu((char*) save_menu_items, fb);
+        sub_choice = selection_menu((char*) save_menu_items, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 5)) {
-          char filename[300] = SAVESTATE_DIRECTORY;
+          strcpy(filename,  SAVESTATE_DIRECTORY);
           strcat(filename, Memory.ROMName);
           char slot_num[3];
           itoa(sub_choice + 1, slot_num, 10);
@@ -1016,9 +1075,9 @@ void emumgr_menu(gbuffer_t fb) {
         }          
         break;
       case 2:
-        sub_choice = selection_menu((char*) save_menu_items, fb);
+        sub_choice = selection_menu((char*) save_menu_items, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 5)) {
-          char filename[300] = SAVESTATE_DIRECTORY;
+          strcpy(filename,  SAVESTATE_DIRECTORY);
           strcat(filename, Memory.ROMName);
           char slot_num[3];
           itoa(sub_choice + 1, slot_num, 10);
@@ -1036,19 +1095,19 @@ void emumgr_menu(gbuffer_t fb) {
           
         break;
       case 3:
-        sub_choice = slider_menu((char*) bri_menu, emulator_state.volume, 10, fb);
+        sub_choice = slider_menu((char*) snd_menu, emulator_state.volume * 10, 10, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 100))
           emulator_state.volume = sub_choice / 10;
         break;
       case 4:
-        sub_choice = slider_menu((char*) bri_menu, emulator_state.brightness, 10, fb);
+        sub_choice = slider_menu((char*) bri_menu, emulator_state.brightness, 10, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 100))
           if (sub_choice == 0) sub_choice = 1;
           emulator_state.brightness = sub_choice;
           lcd_backlight_set(emulator_state.brightness);
         break;
       case 5:
-        res = menu_loadfile(fb);
+        res = menu_loadfile(fb_saved);
         switch (res) {
           case 0:
             printf("starting emulation\n");
@@ -1083,8 +1142,10 @@ void emumgr_menu(gbuffer_t fb) {
 leave:
 
   sd_deinit();
+  if (!emulator_state.muted)
+    snd_unmute();
 
-//  if (gbuf_get_dat_ptr(fb_saved))
-//    sfe_mem_free((void*) gbuf_get_dat_ptr(fb_saved));
+  if (gbuf_get_dat_ptr(fb_saved))
+    sfe_mem_free((void*) gbuf_get_dat_ptr(fb_saved));
 
 }
