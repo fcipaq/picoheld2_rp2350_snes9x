@@ -38,6 +38,7 @@
 
 // assets
 #include "../assets/rect.h"
+#include "../assets/scroll_bar.h"
 
 extern "C" {
 /* Snes9x */
@@ -787,7 +788,20 @@ int slider_menu(char* caption, int start_val, int step, gbuffer_t fb) {
     font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, caption, menu_font, fb_back);
     font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, caption, menu_font, fb_back);
 
-    draw_rect_fill(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, menu_offset_x + 10 + (menu_width - 20) * value / 100, gbuf_get_height(fb_back) / 2 + 10, 0xffff, fb_back);
+    //draw_rect_fill(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, menu_offset_x + 10 + (menu_width - 20) * value / 100, gbuf_get_height(fb_back) / 2 + 10, 0xffff, fb_back);
+    int bar_start = menu_offset_x + 10 + gbuf_get_width(bar_left_full_image);
+    int bar_end = menu_offset_x + 10 + menu_width - 20 - gbuf_get_width(bar_right_full_image);
+    
+    for (int i = 0; i < bar_end - bar_start; i++) {
+      if (i * 100 / (bar_end - bar_start) > value)
+        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_mid_empty_image, fb_back);  
+      else
+        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_mid_full_image, fb_back);  
+    }
+
+    blit_buf(menu_offset_x + 10 + (menu_width - 20 - gbuf_get_width(bar_right_full_image)), gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_empty_image, fb_back);
+    blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_left_full_image, fb_back);
+    blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_full_image, fb_back);
 
     lcd.request_pageflip();
   }
@@ -890,21 +904,33 @@ int selection_menu(char* item_list, gbuffer_t fb) {
     int scrl_up_arrow_y = menu_offset_y + menu_caption_offset * (font_get_height(menu_font) + menu_items_clearance_y);
     int scrl_down_arrow_y = menu_offset_y + menu_height - 10;
 
-    int total_range_y = scrl_down_arrow_y - scrl_up_arrow_y - 2 * (font_get_height(menu_font) + menu_items_clearance_y);
+    int total_range_y = scrl_down_arrow_y - scrl_up_arrow_y - gbuf_get_height(bar_up_full_image);
     float scrl_pcnt =  (float) ofs_itm / (float) (num_itms - max_vis_items);
 
     if (num_itms > max_vis_items * 3) {
       // When there is a great number of items (like in a directory)
       // use a position indicator
 
-      // position indicator
-      font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y + (font_get_height(menu_font) + menu_items_clearance_y) + total_range_y * scrl_pcnt, 0x0, 'O', menu_font, fb_back);
+      for (int i = 0; i < total_range_y; i++) {
+        if ((i * 100) / total_range_y < scrl_pcnt * 100)
+          blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + i, 0xf81f, bar_mid_h_full_image, fb_back);
+        else
+          blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + i, 0xf81f, bar_mid_h_empty_image, fb_back);
+      }
 
       // arrow up
-      font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y, 0x0, 'A', menu_font, fb_back);
+      //font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y, 0x0, 'A', menu_font, fb_back);
+      blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y, 0xf81f, bar_up_full_image, fb_back);
       
       // arrow down
-      font_put_char(menu_offset_x + menu_width - 10, scrl_down_arrow_y, 0x0, 'V', menu_font, fb_back);
+      //font_put_char(menu_offset_x + menu_width - 10, scrl_down_arrow_y, 0x0, 'V', menu_font, fb_back);
+      blit_buf(menu_offset_x + menu_width - 10, scrl_down_arrow_y, 0xf81f, bar_down_empty_image, fb_back);
+
+      // position indicator
+      //blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y + (font_get_height(menu_font) + menu_items_clearance_y) + total_range_y * scrl_pcnt, 0xf81f, scroll_dot_image, fb_back);
+      //font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y + (font_get_height(menu_font) + menu_items_clearance_y) + total_range_y * scrl_pcnt, 0x0, 'O', menu_font, fb_back);
+      blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + total_range_y * scrl_pcnt, 0xf81f, bar_down_full_image, fb_back);
+
     } else if (num_itms > max_vis_items) {
       // When there is only a small number of items
       // just use arrows to indicate there are more items you can scroll to

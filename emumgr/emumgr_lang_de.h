@@ -68,7 +68,7 @@
 #define STR_LOAD "Spielstand laden"
 #define STR_LOAD_STATE "Spielstand laden"
 #define STR_SEL_ROM "Spiel w\xe4hlen"
-#define STR_SOUND "Ton"
+#define STR_SOUND "Lautst\xe4rke"
 #define STR_BRIGHTNESS "Helligkeit"
 #define STR_OPTIONS "Einstellungen"
 #define STR_LAUNCH "Spiel starten"
