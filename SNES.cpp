@@ -50,7 +50,7 @@ extern "C" {
 LCD_DPI lcd = LCD_DPI();
 #endif
 
-int brightness = 64;
+
 gbuffer_t fb_back;
 extern emulator_state_t emulator_state;
 
@@ -251,7 +251,7 @@ void setup(void) {
   // power up SD card
   pwr_sd_sply(1);
 
-  if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 70000000)) {  //70  // Pimoroni can do 90 - why?
+  if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 90000000)) {  //70  // Pimoroni can do 90 - why?
     emu_panic("sfe error\n");
   } else
   printf("sfe init complete\n");
@@ -276,8 +276,11 @@ void setup(void) {
 
   printf("lcd init complete.\n");
 
+  emulator_state.volume = 2;
+  emulator_state.brightness = 20;
+
   lcd_backlight_init();
-  lcd_backlight_set(20);
+  lcd_backlight_set(emulator_state.brightness);
 
   printf("trying to get some PSRAM\n");
   uint16_t* test  = (uint16_t*) sfe_mem_malloc(1024);
@@ -370,7 +373,7 @@ int main(void)
       ctrl_button_state_update();
       if (ctrl_is_pressed(BUTTON_SW))
         emumgr_menu(fb_back);
-        
+/*
       if (ctrl_is_pressed(BUTTON_L)) {
         manual_framedrop = 1;
         manual_framedrop_cnt = 0;
@@ -379,7 +382,7 @@ int main(void)
       if (ctrl_is_pressed(BUTTON_R)) {
         manual_framedrop = 0;
       }
-
+*/
       startTime = micros();
 
       if (IPPU.RenderThisFrame == false)
@@ -399,11 +402,17 @@ int main(void)
 
       /* ---------- LCD ------------*/
     if (IPPU.RenderThisFrame) {
-      char debug_print[20];
-      itoa(target_fps - dfps, debug_print, 10);
-      font_write_string(11, 11, 0x0, debug_print, (font_t*) font_13x16, fb_back);
-      font_write_string(10, 10, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+      if (emulator_state.show_fps) {
+        char debug_print[20];
+        itoa(target_fps - dfps, debug_print, 10);
+        font_write_string(14, 6, 0x0, debug_print, (font_t*) font_13x16, fb_back);
+        font_write_string(13, 5, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+      }
 
+      if (emulator_state.show_bat)
+        draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
+
+      #if 0
       itoa(bat_volt, debug_print, 10);
       font_write_string(11, 11 + 15, 0x0, debug_print, (font_t*) font_13x16, fb_back);
       font_write_string(10, 10 + 15, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
@@ -419,6 +428,7 @@ int main(void)
       font_write_string(11, 11 + 45, 0x0, "BAT", (font_t*) font_13x16, fb_back);
       font_write_string(10, 10 + 45, 0xffff, "BAT", (font_t*) font_13x16, fb_back);
       }
+      #endif
     }
 
 #ifdef PSRAM_TEST

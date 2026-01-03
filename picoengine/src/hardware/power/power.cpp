@@ -51,7 +51,7 @@ int pwr_get_bat_vol() {
 // Return type of currently used power source:
 // either on battery or on grid
 int pwr_get_source() {
-  if (!gpio_get(PIN_CHG_STAT) || pwr_get_bat_vol() > (PWR_CHG_MAX_VOL))
+  if (!gpio_get(PIN_CHG_STAT) || pwr_get_bat_vol() > (PWR_CHG_MIN_VOL))
     return PWR_ON_GRD;
   else
     return PWR_ON_BAT;

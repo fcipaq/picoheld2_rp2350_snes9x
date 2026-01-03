@@ -25,9 +25,12 @@ typedef struct {
   volatile int volume;
   volatile bool muted;
   int brightness;
+  bool show_bat;
+  bool show_fps;
   void* psram_rom;
 } emulator_state_t;
 
 void emumgr_menu(gbuffer_t fb);
+void draw_battery(int x, int y, int percent, gbuffer_t fb_back);
 
 #endif //EMUMGR_H

@@ -27,7 +27,6 @@
 
 /* Pico Held hw library */
 #include <picoengine.h>
-#include <fonts/fontfiles/pixelmix_14_16.h>
 
 #include "hardware/flash.h"
 #include "pico/bootrom.h"
@@ -39,6 +38,9 @@
 // assets
 #include "../assets/rect.h"
 #include "../assets/scroll_bar.h"
+#include "../assets/battery.h"
+//#include <fonts/fontfiles/pixelmix_14_16.h>
+#include <fonts/fontfiles/picoheld_pixel_6x7.h>
 
 extern "C" {
 /* Snes9x */
@@ -58,6 +60,7 @@ extern "C" {
 
 uint32_t millis();
 uint32_t micros();
+int progress_bar(char* caption, int value, gbuffer_t fb);
 
 /* ====================================================== variables ====================================================== */
 extern LCD_DPI lcd;
@@ -67,7 +70,7 @@ emulator_state_t emulator_state;
 bool rom_loaded;
 /* ====================================================== end variables ====================================================== */
 
-#define MENU_FONT pixelmix_14_16
+#define MENU_FONT picoheld_pixel_6x7
 //#define MENU_FONT font_13x16
 //#define MENU_FONT font_8x11
 
@@ -185,6 +188,30 @@ const char* message_save[MSG_SAVE_NUM_ROWS] = { STR_SAVING_GAME_STATE,
 
 const char* message_error[MSG_ERROR_NUM_ROWS] = { STR_ERROR };
 
+void draw_battery(int x, int y, int percent, gbuffer_t fb_back) {
+
+    int level = percent / 25;
+    
+    if (level > 3)
+      level = 3;
+
+    if (pwr_get_source() == PWR_ON_GRD) {
+      blit_buf(x, y, 0xf81f, battery_normal_image, fb_back);
+      blit_buf(x + 5, y + 3, 0xf81f, flash_image, fb_back);
+    } else {
+      if (level) {
+        blit_buf(x, y, 0xf81f, battery_normal_image, fb_back);
+        for (int i = 0; i < level; i++) {
+          draw_rect_fill(x + 17 - i * 5, y + 3, x + 17 - i * 5 - 3, y + 8, rgb_col_888_565(200, 200, 200), fb_back);
+        }
+      } else {
+        blit_buf(x, y, 0xf81f, battery_empty_image, fb_back);
+      }
+    }
+
+
+}
+
 int message(char* s) {
   return 0;
 };
@@ -256,10 +283,13 @@ int sd_init() {
   return ret;
 }
 
-int load_rom_from_sd(char* filename) {
+int load_rom_from_sd(char* filename, gbuffer_t fb) {
   int ret = 0;
   FIL fil;
   FRESULT fr;
+
+  int step = 0;
+  int percent = 0; 
 
   fr = f_open(&fil, filename, FA_READ);
 
@@ -302,6 +332,13 @@ int load_rom_from_sd(char* filename) {
       printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
       ret = -3;
       goto bailout;
+    }
+    
+    percent = 100 - unread_bytes * 100 / filesize;
+    if (percent >= step) {
+      step += 5;  // smoothness
+      printf("percent: %d\n", percent);
+      progress_bar(STR_LOADING, percent, fb);
     }
   }
 
@@ -705,7 +742,48 @@ int get_directory(char *path, char* buffer) {
     return 0;
 }
 
-int slider_menu(char* caption, int start_val, int step, gbuffer_t fb) {
+int progress_bar(char* caption, int value, gbuffer_t fb) {
+  if ((value < 0) || (value > 100))
+    return -1;
+  
+  gbuffer_t fb_back;
+
+  color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
+  color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
+
+  font_t* menu_font = (font_t*) MENU_FONT;
+  int menu_offset_x = MENU_OFFSET_X;
+  int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
+  
+  lcd.get_backbuffer(&fb_back);
+  blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
+
+  blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_small)) / 2, 0xf81f, 90, rect_image_small, fb_back);
+
+  font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, caption, menu_font, fb_back);
+  font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, caption, menu_font, fb_back);
+
+  int bar_start = menu_offset_x + 10 + gbuf_get_width(bar_left_full_image);
+  int bar_end = menu_offset_x + 10 + menu_width - 20 - gbuf_get_width(bar_right_full_image);
+    
+  for (int i = 0; i < bar_end - bar_start; i++) {
+    if (i * 100 / (bar_end - bar_start) > value)
+      blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_mid_empty_image, fb_back);  
+    else
+      blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_mid_full_image, fb_back);  
+  }
+
+  blit_buf(menu_offset_x + 10 + (menu_width - 20 - gbuf_get_width(bar_right_full_image)), gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_empty_image, fb_back);
+  blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_left_full_image, fb_back);
+  blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_full_image, fb_back);
+
+  lcd.request_pageflip();
+
+  return 0;
+
+}
+
+int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_t fb) {
   gbuffer_t fb_back;
 
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
@@ -754,6 +832,9 @@ int slider_menu(char* caption, int start_val, int step, gbuffer_t fb) {
 
     if (value > 100)
       value = 100;
+
+    if (brightness && value > 0)
+      lcd_backlight_set(value);
 
     if (ctrl_is_pressed(BUTTON_A) ||
         ctrl_is_pressed(BUTTON_B) ||
@@ -808,7 +889,7 @@ int slider_menu(char* caption, int start_val, int step, gbuffer_t fb) {
 
 }
 
-int selection_menu(char* item_list, gbuffer_t fb) {
+int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
   gbuffer_t fb_back, fb_font;
 
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
@@ -824,6 +905,12 @@ int selection_menu(char* item_list, gbuffer_t fb) {
   font_t* menu_font = (font_t*) MENU_FONT;
   int menu_items_clearance_y = 5;
   int max_vis_items = (menu_height - (font_get_height(menu_font) + menu_items_clearance_y) * menu_caption_offset) / (font_get_height(menu_font) + menu_items_clearance_y);
+  int num_itms = get_item_cnt(item_list) - 1;  // minus the caption
+
+  while (max_vis_items > num_itms) {
+    menu_items_clearance_y++;
+    max_vis_items = (menu_height - (font_get_height(menu_font) + menu_items_clearance_y) * menu_caption_offset) / (font_get_height(menu_font) + menu_items_clearance_y);
+  }
    
   int b_debounce = 0;
   int b_debounce_timer = 0;
@@ -831,7 +918,6 @@ int selection_menu(char* item_list, gbuffer_t fb) {
 
   int cur_itm = 0;
   int ofs_itm = 0;
-  int num_itms = get_item_cnt(item_list) - 1;  // minus the caption
   if (num_itms < max_vis_items)
     max_vis_items = num_itms;
   int first_run = 1;
@@ -888,12 +974,21 @@ int selection_menu(char* item_list, gbuffer_t fb) {
               h_font_scrl_dir = 1;
           }
         }
-
-        font_write_string(h_font_scrl_pos + 1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
-        font_write_string(h_font_scrl_pos + 0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_selected_color, text, menu_font, fb_font);
+        if (centered) {
+          font_write_string_centered(menu_width / 2 + h_font_scrl_pos + 1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
+          font_write_string_centered(menu_width / 2 + h_font_scrl_pos + 0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_selected_color, text, menu_font, fb_font);
+        } else {
+          font_write_string(h_font_scrl_pos + 1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
+          font_write_string(h_font_scrl_pos + 0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_selected_color, text, menu_font, fb_font);
+        }
       } else {
-        font_write_string(1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
-        font_write_string(0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_unselected_color, text, menu_font, fb_font);
+        if (centered) {
+          font_write_string_centered(menu_width / 2 + 1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
+          font_write_string_centered(menu_width / 2 + 0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_unselected_color, text, menu_font, fb_font);
+        } else {
+          font_write_string(1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
+          font_write_string(0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_unselected_color, text, menu_font, fb_font);
+        }
       }
 
     }
@@ -907,7 +1002,7 @@ int selection_menu(char* item_list, gbuffer_t fb) {
     int total_range_y = scrl_down_arrow_y - scrl_up_arrow_y - gbuf_get_height(bar_up_full_image);
     float scrl_pcnt =  (float) ofs_itm / (float) (num_itms - max_vis_items);
 
-    if (num_itms > max_vis_items * 3) {
+    if (num_itms > max_vis_items) {
       // When there is a great number of items (like in a directory)
       // use a position indicator
 
@@ -1039,7 +1134,7 @@ int menu_loadfile(gbuffer_t fb) {
     goto bailout;
   }
 
-  res = selection_menu((char*) buffer, fb);
+  res = selection_menu((char*) buffer, 0, fb);
 
   if (res == -1) {
     ret = -1;  // aborted by user
@@ -1051,7 +1146,7 @@ int menu_loadfile(gbuffer_t fb) {
 
   printf("filename to load is: %s\n", filename);
 
-  res = load_rom_from_sd(filename);
+  res = load_rom_from_sd(filename, fb);
   if (res != 0) {
     printf("load_rom_from_sd return %d\n", res);
     ret = -4;  // error reading file
@@ -1098,6 +1193,10 @@ void emumgr_menu(gbuffer_t fb) {
 
   int b_debounce = 1;
 
+  // TODO: fixme
+  emulator_state.show_bat = true;
+  emulator_state.show_fps = true;
+
   while (1) {
     ctrl_button_state_update();
     if (!ctrl_is_pressed(BUTTON_ANY))
@@ -1106,7 +1205,7 @@ void emumgr_menu(gbuffer_t fb) {
     if (ctrl_is_pressed(BUTTON_SW) && !b_debounce)
       goto leave;
     
-    main_choice = selection_menu((char*) main_menu_items, fb_saved);
+    main_choice = selection_menu((char*) main_menu_items, 1, fb_saved);
     switch (main_choice) {
       case 0:
         if (rom_loaded)
@@ -1127,7 +1226,7 @@ void emumgr_menu(gbuffer_t fb) {
         
         break;
       case 1:
-        sub_choice = selection_menu((char*) save_menu_items, fb_saved);
+        sub_choice = selection_menu((char*) save_menu_items, 1, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 5)) {
           strcpy(filename,  SAVESTATE_DIRECTORY);
           strcat(filename, Memory.ROMName);
@@ -1140,7 +1239,7 @@ void emumgr_menu(gbuffer_t fb) {
         }          
         break;
       case 2:
-        sub_choice = selection_menu((char*) save_menu_items, fb_saved);
+        sub_choice = selection_menu((char*) save_menu_items, 1, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 5)) {
           strcpy(filename,  SAVESTATE_DIRECTORY);
           strcat(filename, Memory.ROMName);
@@ -1160,16 +1259,15 @@ void emumgr_menu(gbuffer_t fb) {
           
         break;
       case 3:
-        sub_choice = slider_menu((char*) snd_menu, emulator_state.volume * 10, 10, fb_saved);
+        sub_choice = slider_menu((char*) snd_menu, emulator_state.volume * 10, 10, 0, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 100))
           emulator_state.volume = sub_choice / 10;
         break;
       case 4:
-        sub_choice = slider_menu((char*) bri_menu, emulator_state.brightness, 10, fb_saved);
+        sub_choice = slider_menu((char*) bri_menu, emulator_state.brightness, 10, 1, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 100))
           if (sub_choice == 0) sub_choice = 1;
           emulator_state.brightness = sub_choice;
-          lcd_backlight_set(emulator_state.brightness);
         break;
       case 5:
         res = menu_loadfile(fb_saved);
