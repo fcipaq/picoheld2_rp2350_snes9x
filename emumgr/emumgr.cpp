@@ -29,6 +29,7 @@
 #include <picoengine.h>
 
 #include "hardware/flash.h"
+#include <hardware/xip_cache.h>
 #include "pico/bootrom.h"
 
 #include "emumgr.h"
@@ -58,16 +59,36 @@ extern "C" {
 #include "sparkfun_pico/sfe_pico.h"
 }
 
+#define FLASH_ROM_ADDRESS (0x500000)
+
 uint32_t millis();
 uint32_t micros();
 int progress_bar(char* caption, int value, gbuffer_t fb);
+int message(char* s);
 
 /* ====================================================== variables ====================================================== */
+// misc
+int menu_first_run = 1;
 extern LCD_DPI lcd;
 FATFS fs_handle;
 bool m_sd_init = false;
 emulator_state_t emulator_state;
-bool rom_loaded;
+void* psram_rom;
+int translucency = 50;
+
+// starfield
+#define NUM_STARS (100)
+uint8_t* stars_x;
+uint8_t* stars_y;
+uint8_t* stars_color;
+uint8_t* stars_speed;
+uint32_t stars_timer;
+
+// battery indicator
+gbuffer_t draw_battery_gbuf;
+int battery_last_level = -1;
+int supply_type_last = -1;
+
 /* ====================================================== end variables ====================================================== */
 
 #define MENU_FONT picoheld_pixel_6x7
@@ -188,27 +209,101 @@ const char* message_save[MSG_SAVE_NUM_ROWS] = { STR_SAVING_GAME_STATE,
 
 const char* message_error[MSG_ERROR_NUM_ROWS] = { STR_ERROR };
 
+int stars_init() {
+  if (stars_x == NULL) {
+    stars_x = (uint8_t*) sfe_mem_malloc(NUM_STARS);
+    stars_y = (uint8_t*) sfe_mem_malloc(NUM_STARS);
+    stars_speed = (uint8_t*) sfe_mem_malloc(NUM_STARS);
+    stars_color = (uint8_t*) sfe_mem_malloc(NUM_STARS);
+
+    if (!stars_x || !stars_y || !stars_color || !stars_speed) {
+      message("error: no psram");
+      return -1;
+    }
+
+    for (int i = 0; i < NUM_STARS; i++) {
+      stars_x[i] = rand() % 240;
+      stars_y[i] = rand() % 224;
+      stars_speed[i] = (rand() % 3) + 1;
+    }
+  }
+
+  return 0;
+}
+
+void stars_draw(gbuffer_t fb) {
+  if (millis() - stars_timer < 30)
+    return;
+
+  stars_timer = millis();
+
+  for (int i = 0; i < NUM_STARS; i++) {
+    stars_x[i] += stars_speed[i];
+    if (stars_x[i] > 247)
+      stars_x[i] = 0;
+  }
+
+  color_t stars_color;
+  color_t col[3];
+  col[0] = rgb_col_888_565(100, 100, 100);
+  col[1] = rgb_col_888_565(150, 150, 150);
+  col[2] = rgb_col_888_565(200, 200, 200);
+
+  for (int i = 0; i < NUM_STARS; i++) {
+      switch (stars_speed[i]) {
+        case 0:
+          stars_color = col[0];
+          break;
+        case 1:
+          stars_color = col[1];
+          break;
+        case 2:
+          stars_color = col[2];
+          break;
+      }
+    draw_pixel(stars_x[i], stars_y[i], stars_color, fb);
+  }
+}
+
 void draw_battery(int x, int y, int percent, gbuffer_t fb_back) {
+
+    if (gbuf_get_dat_ptr(draw_battery_gbuf) == NULL) {
+      if (gbuf_create(&draw_battery_gbuf, gbuf_get_width(battery_normal_image), gbuf_get_height(battery_normal_image), (void*) sfe_mem_malloc(gbuf_get_width(battery_normal_image) * gbuf_get_height(battery_normal_image) * 2)) != BUF_SUCCESS) {
+        message("error: no psram"); 
+        return;
+      }       
+    }
 
     int level = percent / 25;
     
     if (level > 3)
       level = 3;
 
-    if (pwr_get_source() == PWR_ON_GRD) {
-      blit_buf(x, y, 0xf81f, battery_normal_image, fb_back);
-      blit_buf(x + 5, y + 3, 0xf81f, flash_image, fb_back);
-    } else {
-      if (level) {
-        blit_buf(x, y, 0xf81f, battery_normal_image, fb_back);
-        for (int i = 0; i < level; i++) {
-          draw_rect_fill(x + 17 - i * 5, y + 3, x + 17 - i * 5 - 3, y + 8, rgb_col_888_565(200, 200, 200), fb_back);
-        }
+    if ((battery_last_level != level) || pwr_get_source() != supply_type_last) {
+      draw_rect_fill(0, 0, gbuf_get_width(draw_battery_gbuf), gbuf_get_height(draw_battery_gbuf), 0xf81f, draw_battery_gbuf);
+      battery_last_level = level;
+      supply_type_last = pwr_get_source();
+      if (pwr_get_source() == PWR_ON_GRD) {
+        blit_buf(0, 0, 0xf81f, battery_normal_image, draw_battery_gbuf);
+        blit_buf(5, 3, 0xf81f, flash_image, draw_battery_gbuf);
       } else {
-        blit_buf(x, y, 0xf81f, battery_empty_image, fb_back);
+        if (level) {
+          blit_buf(0, 0, 0xf81f, battery_normal_image, draw_battery_gbuf);
+          for (int i = 0; i < level; i++) {
+            draw_rect_fill(17 - i * 5, 3, 17 - i * 5 - 3, 8, rgb_col_888_565(200, 200, 200), draw_battery_gbuf);
+          }
+        } else {
+          blit_buf(0, 0, 0xf81f, battery_empty_image, draw_battery_gbuf);
+        }
       }
+
+    } else {
+#ifdef ENABLE_PSRAM_FB
+      return;
+#endif      
     }
 
+    blit_buf_blend(x, y, 0xf81f, 40, draw_battery_gbuf, fb_back);
 
 }
 
@@ -301,12 +396,12 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
   
   printf("open complete\n");
 
-  if (emulator_state.psram_rom)
-    sfe_mem_free(emulator_state.psram_rom);
+  if (psram_rom)
+    sfe_mem_free(psram_rom);
 
   uint32_t filesize = f_size(&fil);
-  emulator_state.psram_rom = sfe_mem_malloc(filesize);
-  uint8_t* buf = (uint8_t*) emulator_state.psram_rom;
+  psram_rom = sfe_mem_malloc(filesize);
+  uint8_t* buf = (uint8_t*) psram_rom;
   uint32_t unread_bytes = filesize;
 
   if (!buf) {
@@ -316,9 +411,6 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
   }
 
   printf("Got buffer (%d bytes).\n", filesize);
-
-  //Memory.ROM = (uint8_t*) FLASH_ROM_ADDRESS;
-  //Memory.ROM_Size = FLASH_ROM_ADDRESS;
 
   Memory.ROM = buf;
   Memory.ROM_Size = filesize;
@@ -337,7 +429,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
     percent = 100 - unread_bytes * 100 / filesize;
     if (percent >= step) {
       step += 5;  // smoothness
-      printf("percent: %d\n", percent);
+      printf("Loading from SD: %d %\n", percent);
       progress_bar(STR_LOADING, percent, fb);
     }
   }
@@ -575,94 +667,12 @@ int check_rom_valid(uint8_t* rom_addr) {
   return true;
 }
 
-int flash_rom(FsFile &rom_file, uint8_t* rom_addr) {
-  char rom_file_str_tmp[256];
-  rom_file.getName(rom_file_str_tmp, 255);
-  String rom_file_str = rom_file_str_tmp;
-
-  long rom_file_size = rom_file.size();
-  long bytes_remaining = rom_file_size;
-  long bytes_written = 0;
-
-  uint32_t rom_addr_int = ((uint32_t)&rom_addr[0]) - XIP_BASE;
-
-  //  if (PICO_FLASH_SIZE_BYTES - (__flash_binary_end - XIP_BASE) < rom_file_size)
-  if (PICO_FLASH_SIZE_BYTES - rom_addr_int < rom_file_size) {
-    message2(STR_ERROR, STR_ROM_TOO_BIG, 2, 2000);
-    return false;
-  }
-
-  int ret = true;
-  uint8_t percent = 0;
-  uint8_t percent_old = 0;
-
-  long erase_size = rom_file_size;
-
-  if (erase_size % FLASH_SECTOR_SIZE)
-    erase_size = (erase_size / FLASH_SECTOR_SIZE + 1) * FLASH_SECTOR_SIZE;
-
-  for (int i = 0; i < erase_size / FLASH_SECTOR_SIZE; i++) {
-    flash_range_erase(rom_addr_int + i * FLASH_SECTOR_SIZE, FLASH_SECTOR_SIZE);
-    //	percent = 100 * (i * FLASH_SECTOR_SIZE) / erase_size;
-    percent = 66 * (i * FLASH_SECTOR_SIZE) / erase_size;
-    if (percent - percent_old > 5) {
-      percent_old = percent;
-      draw_bar(percent, STR_LOADING);
-    }
-  }
-
-  //percent_old = 0;
-
-  while (bytes_remaining > 0) {
-    //memset(M68K_RAM, 0, FLASH_SECTOR_SIZE);
-
-    int read_len = rom_file.readBytes((char*)M68K_RAM, bytes_remaining < FLASH_SECTOR_SIZE ? bytes_remaining : FLASH_SECTOR_SIZE);
-
-    // swap hi/lo byte --> emu performance improvement due to different endianess
-    for (int i = 0; i < FLASH_SECTOR_SIZE; i += 2) {
-      uint8_t tmp = M68K_RAM[i];
-      M68K_RAM[i] = M68K_RAM[i + 1];
-      M68K_RAM[i + 1] = tmp;
-    }
-
-    // erasing flash here does not work...
-    //flash_range_erase(rom_addr_int + bytes_written, FLASH_SECTOR_SIZE);
-    flash_range_program(rom_addr_int + bytes_written, M68K_RAM, FLASH_SECTOR_SIZE);
-
-    //percent = 100 - 100 * bytes_remaining / rom_file_size;
-    percent = 100 - 33 * bytes_remaining / rom_file_size;
-    if (percent - percent_old > 5) {
-      percent_old = percent;
-      draw_bar(percent, STR_LOADING);
-    }
-
-    bytes_remaining -= FLASH_SECTOR_SIZE;
-    bytes_written += FLASH_SECTOR_SIZE;
-  }
-
-  rom_file.close();
-
-#if WRITE_BACK_FILE_TO_SD
-  rom_file = SD.open("/cmp.bin", FILE_WRITE);
-  bytes_remaining = rom_file_size;
-  bytes_written = 0;
-  while (bytes_remaining > 0) {
-    rom_file.write(&ROM_DATA[bytes_written], FLASH_SECTOR_SIZE < bytes_remaining ? FLASH_SECTOR_SIZE : bytes_remaining);
-    bytes_remaining -= FLASH_SECTOR_SIZE;
-    bytes_written += FLASH_SECTOR_SIZE;
-  }
-  rom_file.close();
-#endif
-
   // reset machine
   // let's just hope noone messed with the WD settings...
   watchdog_reboot(0, 0, 1);
   watchdog_enable(1, false);
 
-  return ret;
-}
-
-#endif
+  #endif
 
 
 /* ----------------------- main function -----------------------*/
@@ -757,8 +767,10 @@ int progress_bar(char* caption, int value, gbuffer_t fb) {
   
   lcd.get_backbuffer(&fb_back);
   blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
+  if (menu_first_run)
+    stars_draw(fb_back);
 
-  blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_small)) / 2, 0xf81f, 90, rect_image_small, fb_back);
+  blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_small)) / 2, 0xf81f, translucency, rect_image_small, fb_back);
 
   font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, caption, menu_font, fb_back);
   font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, caption, menu_font, fb_back);
@@ -801,6 +813,7 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
 
   int value = start_val;
   int first_run = 1;
+  int buttons_locked = 1;
 
   if ((step < 1) || (step > 50))
     step = 10;
@@ -808,63 +821,62 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
   while (1) {
     lcd.get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
+    if (menu_first_run)
+      stars_draw(fb_back);
 
     ctrl_button_state_update();
 
-    if (first_run) {
-      while (1) {
-        if (!ctrl_is_pressed(BUTTON_ANY))
-          break;
-        sleep_ms(50);
-        ctrl_button_state_update();
-      } 
-      first_run = 0;
+    if (first_run && !ctrl_is_pressed(BUTTON_ANY)) {
+          buttons_locked = 0;
+          first_run = 0;
     }
 
-    if (ctrl_is_pressed(BUTTON_LEFT) && !b_debounce)
-      value -= step;
+    if (!buttons_locked) {
+      if (ctrl_is_pressed(BUTTON_LEFT) && !b_debounce)
+        value -= step;
       
-    if (ctrl_is_pressed(BUTTON_RIGHT) && !b_debounce)
-      value += step;
+      if (ctrl_is_pressed(BUTTON_RIGHT) && !b_debounce)
+        value += step;
   
-    if (value < 0)
-      value = 0;
+      if (value < 0)
+        value = 0;
 
-    if (value > 100)
-      value = 100;
+      if (value > 100)
+        value = 100;
 
-    if (brightness && value > 0)
-      lcd_backlight_set(value);
+      if (brightness && value > 0)
+        lcd_backlight_set(value);
 
-    if (ctrl_is_pressed(BUTTON_A) ||
-        ctrl_is_pressed(BUTTON_B) ||
-        ctrl_is_pressed(BUTTON_X) ||
-        ctrl_is_pressed(BUTTON_Y) ||
-        ctrl_is_pressed(BUTTON_L) ||
-        ctrl_is_pressed(BUTTON_R) ||
-        ctrl_is_pressed(BUTTON_ST) ||
-        ctrl_is_pressed(BUTTON_SEL) ||
-        ctrl_is_pressed(BUTTON_SW))
-      return value;
+      if ( ctrl_is_pressed(BUTTON_A) ||
+           ctrl_is_pressed(BUTTON_B) ||
+           ctrl_is_pressed(BUTTON_X) ||
+           ctrl_is_pressed(BUTTON_Y) ||
+           ctrl_is_pressed(BUTTON_L) ||
+           ctrl_is_pressed(BUTTON_R) ||
+           ctrl_is_pressed(BUTTON_ST) ||
+           ctrl_is_pressed(BUTTON_SEL) ||
+           ctrl_is_pressed(BUTTON_SW))
+        return value;
 
-    if (!ctrl_is_pressed(BUTTON_ANY)) {
-      b_debounce = 0;
-      b_repeater = 0;
-    } else {
-      if (b_debounce == 0) {
-        b_debounce = 1;
-        b_debounce_timer = millis();
-      } else if ((millis() - b_debounce_timer > MENU_REPEAT_START) && !b_repeater) {
-        b_repeater = 1;
+      if (!ctrl_is_pressed(BUTTON_ANY)) {
         b_debounce = 0;
-        b_debounce_timer = millis();         
-      } else if ((millis() - b_debounce_timer > MENU_REPEAT_DELAY) && b_repeater) {
-        b_debounce = 0;
-        b_debounce_timer = millis();         
+        b_repeater = 0;
+      } else {
+        if (b_debounce == 0) {
+          b_debounce = 1;
+          b_debounce_timer = millis();
+        } else if ((millis() - b_debounce_timer > MENU_REPEAT_START) && !b_repeater) {
+          b_repeater = 1;
+          b_debounce = 0;
+          b_debounce_timer = millis();         
+        } else if ((millis() - b_debounce_timer > MENU_REPEAT_DELAY) && b_repeater) {
+          b_debounce = 0;
+          b_debounce_timer = millis();         
+        }
       }
     }
 
-    blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_small)) / 2, 0xf81f, 90, rect_image_small, fb_back);
+    blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_small)) / 2, 0xf81f, translucency, rect_image_small, fb_back);
 
     font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, caption, menu_font, fb_back);
     font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, caption, menu_font, fb_back);
@@ -921,6 +933,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
   if (num_itms < max_vis_items)
     max_vis_items = num_itms;
   int first_run = 1;
+  int buttons_locked = 1;
 
   uint32_t h_font_scrl_timer = millis() + 1000;
   int h_font_scrl_pos = 0;
@@ -936,8 +949,10 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
   while (1) {
     lcd.get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
+    if (menu_first_run)
+      stars_draw(fb_back);
 
-    blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_big)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_big)) / 2, 0xf81f, 90, rect_image_big, fb_back);
+    blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_big)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_big)) / 2, 0xf81f, translucency, rect_image_big, fb_back);
     
     // caption
     font_write_string_centered(1 + menu_offset_x + menu_width / 2, 1 + menu_offset_y, menu_font_shadow_color, get_item(0, item_list), menu_font, fb_back);
@@ -1026,7 +1041,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
       //font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y + (font_get_height(menu_font) + menu_items_clearance_y) + total_range_y * scrl_pcnt, 0x0, 'O', menu_font, fb_back);
       blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + total_range_y * scrl_pcnt, 0xf81f, bar_down_full_image, fb_back);
 
-    } else if (num_itms > max_vis_items) {
+    } /* else if (num_itms > max_vis_items) {
       // When there is only a small number of items
       // just use arrows to indicate there are more items you can scroll to
       
@@ -1038,62 +1053,59 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
       if (ofs_itm + max_vis_items < num_itms)
         font_put_char(menu_offset_x + menu_width - 10, scrl_down_arrow_y, 0x0, 'V', menu_font, fb_back);
 
-    }
+    } */
 
     ctrl_button_state_update();
 
-    if (first_run) {
-      while (1) {
-        if (!ctrl_is_pressed(BUTTON_ANY))
-          break;
-        sleep_ms(50);
-        ctrl_button_state_update();
-      } 
+    if (first_run && buttons_locked && !ctrl_is_pressed(BUTTON_ANY)) {
       first_run = 0;
+      buttons_locked = 0;
     }
 
-    // return selected item
-    if (ctrl_is_pressed(BUTTON_A) ||
-        ctrl_is_pressed(BUTTON_B) ||
-        ctrl_is_pressed(BUTTON_X) ||
-        ctrl_is_pressed(BUTTON_Y) ||
-        ctrl_is_pressed(BUTTON_L) ||
-        ctrl_is_pressed(BUTTON_R) ||
-        ctrl_is_pressed(BUTTON_ST) ||
-        ctrl_is_pressed(BUTTON_SEL) ||
-        ctrl_is_pressed(BUTTON_SW))
-      goto leave;
+    if (!buttons_locked) {
+      // return selected item
+      if (ctrl_is_pressed(BUTTON_A) ||
+          ctrl_is_pressed(BUTTON_B) ||
+          ctrl_is_pressed(BUTTON_X) ||
+          ctrl_is_pressed(BUTTON_Y) ||
+          ctrl_is_pressed(BUTTON_L) ||
+          ctrl_is_pressed(BUTTON_R) ||
+          ctrl_is_pressed(BUTTON_ST) ||
+          ctrl_is_pressed(BUTTON_SEL) ||
+          ctrl_is_pressed(BUTTON_SW))
+        goto leave;
 
-    if (ctrl_is_pressed(BUTTON_DOWN) && !b_debounce && (cur_itm < (num_itms - 1))) {
-      cur_itm++;
-      h_font_scrl_timer = millis();
-      h_font_scrl_pos = 0;
-      h_font_scrl_dir = 1;
-      h_font_scrl_delay = 1000;
-    }
+      if (ctrl_is_pressed(BUTTON_DOWN) && !b_debounce && (cur_itm < (num_itms - 1))) {
+        cur_itm++;
+        h_font_scrl_timer = millis();
+        h_font_scrl_pos = 0;
+        h_font_scrl_dir = 1;
+        h_font_scrl_delay = 1000;
+      }
 
-    if (ctrl_is_pressed(BUTTON_UP) && !b_debounce && (cur_itm > 0)) {
-      cur_itm--;
-      h_font_scrl_timer = millis();
-      h_font_scrl_pos = 0;
-      h_font_scrl_dir = 1;
-      h_font_scrl_delay = 1000;
-    }
+      if (ctrl_is_pressed(BUTTON_UP) && !b_debounce && (cur_itm > 0)) {
+        cur_itm--;
+        h_font_scrl_timer = millis();
+        h_font_scrl_pos = 0;
+        h_font_scrl_dir = 1;
+        h_font_scrl_delay = 1000;
+      }
 
-    if (!ctrl_is_pressed(BUTTON_ANY)) {
-      b_debounce = 0;
-      b_repeater = 0;
-    } else {
-      if (b_debounce == 0) {
-        b_debounce = 1;
-        b_debounce_timer = millis();
-      } else if ((millis() - b_debounce_timer > MENU_REPEAT_START) && !b_repeater) {
-        b_repeater = 1;
+      if (!ctrl_is_pressed(BUTTON_ANY)) {
         b_debounce = 0;
-        b_debounce_timer = millis();         
-      } else if ((millis() - b_debounce_timer > MENU_REPEAT_DELAY) && b_repeater) {
-        b_debounce = 0;
-        b_debounce_timer = millis();         
+        b_repeater = 0;
+      } else {
+        if (b_debounce == 0) {
+          b_debounce = 1;
+          b_debounce_timer = millis();
+        } else if ((millis() - b_debounce_timer > MENU_REPEAT_START) && !b_repeater) {
+          b_repeater = 1;
+          b_debounce = 0;
+          b_debounce_timer = millis();         
+        } else if ((millis() - b_debounce_timer > MENU_REPEAT_DELAY) && b_repeater) {
+          b_debounce = 0;
+          b_debounce_timer = millis();         
+        }
       }
     }
 
@@ -1104,16 +1116,75 @@ leave:
   if (gbuf_get_dat_ptr(fb_font))
     sfe_mem_free((void*) gbuf_get_dat_ptr(fb_font));
 
-  while (1) {
-    ctrl_button_state_update();
-    if (!ctrl_is_pressed(BUTTON_ANY))
-      break;
-    sleep_ms(50);
-  } 
-
   return cur_itm;
 
 }
+
+static void call_flash_range_erase(void *param) {
+    uint32_t offset = (uint32_t)param;
+    flash_range_erase(offset, FLASH_SECTOR_SIZE);
+}
+
+int copy_rom_to_flash(gbuffer_t fb) {
+
+  if (!psram_rom)
+    return -1;
+
+  long erase_size = Memory.ROM_Size;
+  uint32_t rom_flash_address = FLASH_ROM_ADDRESS;
+  uint32_t bytes_remaining = Memory.ROM_Size;
+  uint32_t bytes_written = 0;
+  int percent;
+  int percent_old = -1;
+
+  if (erase_size % FLASH_SECTOR_SIZE)
+    erase_size = (erase_size / FLASH_SECTOR_SIZE + 1) * FLASH_SECTOR_SIZE;
+
+  printf("trying to erase %d bytes @ %d\n", (int) erase_size, (int) rom_flash_address);
+
+  for (int i = 0; i < erase_size / FLASH_SECTOR_SIZE; i++) {
+    //flash_range_erase(rom_flash_address + i * FLASH_SECTOR_SIZE, FLASH_SECTOR_SIZE);
+    int rc = flash_safe_execute(call_flash_range_erase, (void*) (rom_flash_address + i * FLASH_SECTOR_SIZE), UINT32_MAX);
+    //hard_assert(rc == PICO_OK);
+    if (rc == PICO_OK)
+      printf("erased 2k @ %d\n", (int)rom_flash_address + i * FLASH_SECTOR_SIZE);
+    else
+      printf("failed to erase 2k @ %d reason: %d\n", (int)rom_flash_address + i * FLASH_SECTOR_SIZE, rc);
+    //	percent = 100 * (i * FLASH_SECTOR_SIZE) / erase_size;
+    percent = 66 * (i * FLASH_SECTOR_SIZE) / erase_size;
+    if (percent - percent_old > 5) {
+      percent_old = percent;
+      progress_bar(STR_LOADING, percent, fb);
+    }
+  }
+
+  //percent_old = 0;
+
+  while (bytes_remaining > 0) {
+    //flash_range_program(rom_flash_address + bytes_written, &Memory.ROM[bytes_written], FLASH_SECTOR_SIZE);
+
+    //percent = 100 - 100 * bytes_remaining / rom_file_size;
+    percent = 100 - 33 * bytes_remaining / Memory.ROM_Size;
+    if (percent - percent_old > 5) {
+      percent_old = percent;
+      progress_bar(STR_LOADING, percent, fb);
+    }
+
+    bytes_remaining -= FLASH_SECTOR_SIZE;
+    bytes_written += FLASH_SECTOR_SIZE;
+  }
+  
+  Memory.ROM = (uint8_t*) rom_flash_address + XIP_BASE;
+  Memory.ROM_is_writable = false;
+
+  sfe_mem_free(psram_rom);
+  psram_rom = (uint8_t*) NULL;
+  flash_flush_cache();
+
+  return 0;
+
+}
+
 
 int menu_loadfile(gbuffer_t fb) {
   char* buffer;
@@ -1153,18 +1224,21 @@ int menu_loadfile(gbuffer_t fb) {
     goto bailout;
   }
 
-  S9xReset();
+  xip_cache_clean_all();
 
-  for (int i = 0; i < SRAM_SIZE; i++)
-    Memory.SRAM[i] = 0;
- 
   Memory.ROM_is_writable = true;
+
+#if 0
+  copy_rom_to_flash(fb);
+#endif
+
   if (!LoadROM(NULL)) {
     ret = -5;  // error loading rom
     goto bailout;
   }
-
-  rom_loaded = true;
+ 
+  for (int i = 0; i < SRAM_SIZE; i++)
+    Memory.SRAM[i] = 0;
 
  bailout:
 
@@ -1175,12 +1249,13 @@ int menu_loadfile(gbuffer_t fb) {
 }
 
 void emumgr_menu(gbuffer_t fb) {
+  if (menu_first_run)
+    stars_init();
 
   gbuffer_t fb_saved;
   int res;
   int main_choice, sub_choice;
   char* filename = (char*) sfe_mem_malloc(520);
-    
 
   if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS)
     message("error: no psram");
@@ -1191,38 +1266,25 @@ void emumgr_menu(gbuffer_t fb) {
   snd_mute();
   sd_init();
 
-  int b_debounce = 1;
-
   // TODO: fixme
   emulator_state.show_bat = true;
   emulator_state.show_fps = true;
 
   while (1) {
-    ctrl_button_state_update();
-    if (!ctrl_is_pressed(BUTTON_ANY))
-      b_debounce = 0;
-    
-    if (ctrl_is_pressed(BUTTON_SW) && !b_debounce)
-      goto leave;
-    
     main_choice = selection_menu((char*) main_menu_items, 1, fb_saved);
     switch (main_choice) {
       case 0:
-        if (rom_loaded)
-          goto leave;
-        else
-          message("choose rom first");
-
-        /*
-        load_rom_from_sd("/roms/snes/Super Mario World (U) [!].smc");
-
-        S9xReset();
+        if (Memory.ROM) {
+          S9xReset();
           
-        Memory.ROM_is_writable = true;
-        LoadROM(NULL);
-
-        goto leave;
-        */
+          if (LoadROM(NULL))
+            goto leave;
+          else
+            message("error loading rom");
+      
+        } else {
+          message("choose rom first");
+        }
         
         break;
       case 1:
@@ -1310,5 +1372,10 @@ leave:
 
   if (gbuf_get_dat_ptr(fb_saved))
     sfe_mem_free((void*) gbuf_get_dat_ptr(fb_saved));
+
+  if (menu_first_run) {
+    menu_first_run = 0;
+    translucency = 90;
+  }
 
 }

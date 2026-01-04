@@ -27,7 +27,7 @@ typedef struct {
   int brightness;
   bool show_bat;
   bool show_fps;
-  void* psram_rom;
+  bool copy_rom_to_flash;
 } emulator_state_t;
 
 void emumgr_menu(gbuffer_t fb);

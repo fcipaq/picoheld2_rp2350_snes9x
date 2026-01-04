@@ -71,6 +71,7 @@ class LCD
     virtual lcd_error_t refresh() { return LCD_NOT_INIT; }
     virtual lcd_error_t get_palette_ptr(color_palette_t* palette_ptr) { return LCD_NOT_INIT; }
     virtual lcd_error_t get_backbuffer(gbuffer_t* lcd_buffer) { return LCD_NOT_INIT; }
+    virtual lcd_error_t get_psram_backbuffer(gbuffer_t* lcd_buffer) { return LCD_UNS_ERR; };
     virtual bool lcd_is_vsync() { return false; }
     virtual lcd_error_t get_fb(gbuffer_t* lcd_buffer) { return LCD_NOT_INIT; }
     virtual bool is_ready() { return false; }

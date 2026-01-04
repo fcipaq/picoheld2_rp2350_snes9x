@@ -47,6 +47,13 @@
 #include "hardware/clocks.h"
 #include "pico/platform.h"
 
+#ifdef ENABLE_PSRAM_FB
+extern "C" {
+// PSRAM
+#include "sparkfun_pico/sfe_pico.h"
+}
+#endif
+
 #include "lcd_dpi_init.h"
 #include "../backlight/backlight.h"
 
@@ -66,6 +73,8 @@
 #define LCD_VBLANK      (LCD_VBP + LCD_VFP + LCD_VPW)
 
 LCD_DPI* lcd_this = NULL;
+
+int lst_returned_back_fb = -1;
 
 /******************************* Implementation ****************************/
 void LCD_DPI::display_sleep() {
@@ -131,7 +140,7 @@ void LCD_DPI::build_default_palette() {
 }
 #endif
 
-void LCD_DPI::retrace() {
+void __no_inline_not_in_flash_func(LCD_DPI::retrace)() {
   // reset DMAs
   for (int i = 0; i < NUM_LCD_DMA; i++)
     m_dma_config[i].ctrl &= ~DMA_CH0_CTRL_TRIG_EN_BITS; // channel_config_set_enable(&m_dma_config[i], false);
@@ -157,7 +166,7 @@ void LCD_DPI::retrace() {
 
 }
 
-void LCD_DPI::refresh_exec() {
+void __no_inline_not_in_flash_func(LCD_DPI::refresh_exec)() {
   // reset RLUT
   for (int i = 0; i < (1u << m_dma_ring_buffer_size); i++)
     m_fb_rlut[i] = m_fb_rlut_backup[m_fb_cur][i];
@@ -167,7 +176,7 @@ void LCD_DPI::refresh_exec() {
   dma_channel_set_read_addr(m_dma_chan[0], m_fb_rlut, true);
 }
 
-void LCD_DPI::cycle_bufs() {
+void __no_inline_not_in_flash_func(LCD_DPI::cycle_bufs)() {
     if (sem_available(&m_pageflip_pending) < (m_num_fb - 1)) {
      //mutex_try_enter(&mut_update_fb, NULL);
 
@@ -181,7 +190,7 @@ void LCD_DPI::cycle_bufs() {
     }
 }
 
-void __isr dma_handler() {
+void __isr __no_inline_not_in_flash_func(__isr dma_handler)() {
 
   assert(lcd_this);
 
@@ -634,7 +643,13 @@ void LCD_DPI::build_fb_rot_lut() {
   // TODO: Investigate. Working theory for the lost words is: During vblanking the scanout SM cannot accept any incoming data.
   // However, DMA0 keeps firing data at DMA1 as long as the PIO's DREQ will ask for it. With the SM's FIFO not getting
   // emptied. In consequence, some data might still be in flight from DMA0 to DMA1 to the FIFO while the FIFO is already full
-  int offset_x = +3 + 8;  // 8 = (240 - SNES_HEIGHT) / 2
+#ifdef ENABLE_PSRAM_FB
+  int a = 0;
+#else
+  int a = 8;
+#endif
+
+  int offset_x = +3 + a;  // 8 = (240 - SNES_HEIGHT) / 2
   int offset_y = 8;  // 8 = (SNES_WIDTH - 240) / 2
  
   //+ (LCD_PHYS_RES_X / m_lcd_scale - 224 /* SNES_EXTENDED_HEIGHT*/) / 2
@@ -651,6 +666,11 @@ void LCD_DPI::build_fb_rot_lut() {
       uint16_t index = (i + ofs) % (1u << m_dma_ring_buffer_size);
       if ((index >= (offset_x + 0)) && (index < (offset_x + 224)))  // visible 224 pixels of the snes
         m_fb_rlut[index] = (uint32_t) &m_fb[h][(i + 1) * 256 /* SNES_WIDTH */ - offset_y - 1];
+#ifdef ENABLE_PSRAM_FB      
+      else
+        m_fb_rlut[index] = (uint32_t) &m_fb_psram[(i - 224) * 256 /* SNES_WIDTH */ - 1];
+#endif
+
     }
 
     // repeat m_lcd_scale times
@@ -746,7 +766,21 @@ lcd_error_t LCD_DPI::init(uint16_t num_fb, int auto_refresh, int scale) {
     m_dma_ring_buffer_size++;
   }
 
-  // TODO only when rotated
+#ifdef ENABLE_PSRAM_FB
+    m_fb_psram = (color_t*) sfe_mem_malloc(256 * 16 * 2 + 4 /* alignment */);
+    if (!m_fb_psram) {
+      res = LCD_MEM_ERR;
+      goto bailout;
+    }
+
+    m_fb_psram = (color_t*) ((uint32_t) m_fb_psram + 4 - ((uint32_t) m_fb_psram % 4));
+
+    for (int h = 0; h < 256 * 16; h++)
+      m_fb_psram[h] = 0;
+
+#endif
+
+// TODO only when rotated
 #if 1
   m_fb_rlut = (uint32_t *) aligned_alloc(1u << (m_dma_ring_buffer_size + 2 /* 4 bytes */), (1u << m_dma_ring_buffer_size) * 4 /* 32 bit addresses */);
   if ((!m_fb_rlut) || (((uint32_t) m_fb_rlut % (1u << (m_dma_ring_buffer_size + 2 /* 4 bytes */))) != 0)) {
@@ -807,6 +841,19 @@ lcd_error_t LCD_DPI::get_fb(gbuffer_t* lcd_buffer) {
   return LCD_SUCCESS;
 }
 
+#ifdef ENABLE_PSRAM_FB
+lcd_error_t LCD_DPI::get_psram_backbuffer(gbuffer_t* lcd_buffer) {
+
+    lcd_buffer->bitdepth = LCD_COLORDEPTH;
+    lcd_buffer->width = 256; //m_screen_width;
+    lcd_buffer->height = 16; //m_screen_height;
+    lcd_buffer->data = m_fb_psram;
+
+    return LCD_SUCCESS;
+
+}
+#endif
+
 lcd_error_t LCD_DPI::get_backbuffer(gbuffer_t* lcd_buffer) {
 
   if (m_num_fb != 1) {
@@ -829,6 +876,7 @@ lcd_error_t LCD_DPI::get_backbuffer(gbuffer_t* lcd_buffer) {
     lcd_buffer->width = 256; //m_screen_width;
     lcd_buffer->height = 224; //m_screen_height;
     lcd_buffer->data = m_fb[res];
+    lst_returned_back_fb = res;
 
     return LCD_SUCCESS;
 

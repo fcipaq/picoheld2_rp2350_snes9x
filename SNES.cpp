@@ -16,6 +16,7 @@
 #include <math.h>
 #include "pico/mutex.h"
 #include "pico/multicore.h"
+#include "pico/flash.h"
 #include "pico/time.h"
 #include "hardware/vreg.h"
 
@@ -42,6 +43,11 @@ extern "C" {
 #include "snes9x/save.h"
 #include "snes9x/gfx.h"
 }
+
+//#define HEADER_ROM
+#ifdef HEADER_ROM
+#include "../rom_super_mario_world.h"
+#endif
 
 #define LCD_ENABLE
 #define AUDIO_ENABLE
@@ -176,6 +182,8 @@ void emu_panic(char* str)
 }
 
 void core1task() {
+  flash_safe_execute_core_init();
+
 #ifdef AUDIO_ENABLE
   int16_t* audio_buf_9x = (int16_t*) sfe_mem_malloc(AUDIO_SAMPLE_RATE / 47 * 2 * 2); // stereo  // add some margin (50 = 100%, 47 = 106%)  // 2.7 kb
   
@@ -309,6 +317,7 @@ int main(void)
 #ifdef USE_BLARGG_APU
   Settings.SoundInputRate = AUDIO_SAMPLE_RATE;
 #endif
+  Memory.ROM = NULL;
 
   if (!S9xInitMemory())
       emu_panic("Memory init failed!\n");
@@ -324,6 +333,11 @@ int main(void)
 
   if (!S9xInitGFX())
       emu_panic("Graphics init failed!\n");
+
+#ifdef HEADER_ROM
+  Memory.ROM = (uint8_t*) ROM_DATA;
+  Memory.ROM_Size = ROM_SIZE;
+#endif
 
   emumgr_menu(fb_back);
 
@@ -350,6 +364,9 @@ int main(void)
     // battery
     uint32_t bat_volt = 0;
     uint32_t bat_volt_cnt = 0;
+#ifdef ENABLE_PSRAM_FB
+    gbuffer_t fb_back_psram;
+#endif
 
     printf("Starting emulation.\n");
 
@@ -390,6 +407,9 @@ int main(void)
 
       if (IPPU.RenderThisFrame) {
         lcd.get_backbuffer(&fb_back);
+#ifdef ENABLE_PSRAM_FB
+        lcd.get_psram_backbuffer(&fb_back_psram);
+#endif
         GFX.Screen = (uint8_t*) fb_back.data;
         GFX.SubScreen = GFX.Screen;
       }
@@ -410,9 +430,14 @@ int main(void)
       }
 
       if (emulator_state.show_bat)
+#ifdef ENABLE_PSRAM_FB
+        draw_battery(219, 1, pwr_get_bat_level(4), fb_back_psram);
+#else
         draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
+#endif
 
-      #if 0
+      #if 1
+      char debug_print[10];
       itoa(bat_volt, debug_print, 10);
       font_write_string(11, 11 + 15, 0x0, debug_print, (font_t*) font_13x16, fb_back);
       font_write_string(10, 10 + 15, 0xffff, debug_print, (font_t*) font_13x16, fb_back);

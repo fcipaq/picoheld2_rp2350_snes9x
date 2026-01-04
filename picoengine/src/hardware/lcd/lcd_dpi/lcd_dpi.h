@@ -41,6 +41,8 @@
 #define SNES_WIDTH_LOCAL (256)
 #define SNES_HEIGHT_LOCAL (224)
 
+//#define ENABLE_PSRAM_FB
+
 class LCD_DPI : public LCD
 {
   private:   
@@ -90,6 +92,9 @@ class LCD_DPI : public LCD
 
     // frame buffers
     color_t m_fb[2][256 /* SNES_WIDTH */ * (224 + 1) /* SNES_HEIGHT + 1 black line*/] __attribute__((aligned(4)));
+#ifdef ENABLE_PSRAM_FB
+    color_t* m_fb_psram;
+#endif
     //color_t m_black_line[256 /* SNES_WIDTH */] __attribute__((aligned(4)));
 
     // rotation LUT
@@ -155,6 +160,9 @@ class LCD_DPI : public LCD
     lcd_error_t get_palette_ptr(color_palette_t* palette_ptr) override;
 #endif
     lcd_error_t get_backbuffer(gbuffer_t* lcd_buffer) override;
+#ifdef ENABLE_PSRAM_FB
+    lcd_error_t get_psram_backbuffer(gbuffer_t* lcd_buffer) override;
+#endif
     lcd_error_t get_fb(gbuffer_t* lcd_buffer) override;
     bool is_ready() override;
 
