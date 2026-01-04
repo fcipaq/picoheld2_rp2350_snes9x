@@ -1232,6 +1232,8 @@ int menu_loadfile(gbuffer_t fb) {
   copy_rom_to_flash(fb);
 #endif
 
+  S9xReset();
+
   if (!LoadROM(NULL)) {
     ret = -5;  // error loading rom
     goto bailout;
@@ -1275,13 +1277,14 @@ void emumgr_menu(gbuffer_t fb) {
     switch (main_choice) {
       case 0:
         if (Memory.ROM) {
-          S9xReset();
+          if (menu_first_run) {
+            S9xReset();
           
-          if (LoadROM(NULL))
-            goto leave;
-          else
-            message("error loading rom");
+            if (!LoadROM(NULL))
+              message("error loading rom");
+          }
       
+          goto leave;
         } else {
           message("choose rom first");
         }

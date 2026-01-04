@@ -44,9 +44,10 @@ extern "C" {
 #include "snes9x/gfx.h"
 }
 
+#include <malloc.h>
 //#define HEADER_ROM
 #ifdef HEADER_ROM
-#include "../rom_super_mario_world.h"
+#include "../rom_lion_king.h"
 #endif
 
 #define LCD_ENABLE
@@ -301,6 +302,15 @@ void setup(void) {
 
 }
 
+void print_memory_usage() {
+    struct mallinfo info = mallinfo();
+
+    printf("Total allocated: %d bytes\n", info.uordblks);
+    printf("Total free: %d bytes\n", info.fordblks);
+    printf("Total heap size: %d bytes\n", info.arena);
+    printf("Largest free block: %d bytes\n", info.ordblks);
+}
+
 int main(void)
 {
   setup();
@@ -318,6 +328,12 @@ int main(void)
   Settings.SoundInputRate = AUDIO_SAMPLE_RATE;
 #endif
   Memory.ROM = NULL;
+    struct mallinfo info = mallinfo();
+
+    printf("Total allocated: %d bytes\n", info.uordblks);
+    printf("Total free: %d bytes\n", info.fordblks);
+    printf("Total heap size: %d bytes\n", info.arena);
+    printf("Largest free block: %d bytes\n", info.ordblks);
 
   if (!S9xInitMemory())
       emu_panic("Memory init failed!\n");
@@ -436,7 +452,7 @@ int main(void)
         draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
 #endif
 
-      #if 1
+      #if 0
       char debug_print[10];
       itoa(bat_volt, debug_print, 10);
       font_write_string(11, 11 + 15, 0x0, debug_print, (font_t*) font_13x16, fb_back);
@@ -520,6 +536,7 @@ int main(void)
 
     frame_no++;
     if (millis() - fps_timer > 1000) {
+
     #if 0
       printf("Bat vol: %d\n", pwr_get_bat_vol());
       printf("Power src: %d\n", pwr_get_source());

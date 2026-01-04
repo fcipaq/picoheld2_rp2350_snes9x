@@ -83,7 +83,7 @@ void S9xDeinterleaveType1(int32_t TotalFileSize, uint8_t* base)
             }
          }
       }
-      free(tmp);
+      sfe_mem_free(tmp);
    }
 }
 
@@ -109,7 +109,7 @@ void S9xDeinterleaveGD24(int32_t TotalFileSize, uint8_t* base)
       memcpy(&base[0x200000], &base[0x280000], 0x80000);
       /* memmove converted: Different mallocs [Neb] */
       memcpy(&base[0x280000], tmp, 0x80000);
-      free(tmp);
+      sfe_mem_free(tmp);
 
       S9xDeinterleaveType1(TotalFileSize, base);
    }
@@ -220,7 +220,7 @@ static char* Safe(const char* s)
    {
       if (safe)
       {
-         free(safe);
+         sfe_mem_free(safe);
          safe = NULL;
       }
       return NULL;
@@ -231,7 +231,7 @@ static char* Safe(const char* s)
    if (!safe || len + 1 > safe_len)
    {
       if (safe)
-         free(safe);
+         sfe_mem_free(safe);
       safe = (char*) sfe_mem_malloc(safe_len = len + 1);
    }
 
@@ -289,45 +289,41 @@ void S9xDeinitMemory(void)
    int t;
    if (Memory.RAM)
    {
-      free(Memory.RAM);
+      sfe_mem_free(Memory.RAM);
       Memory.RAM = NULL;
    }
    if (Memory.SRAM)
    {
-      free(Memory.SRAM);
+      sfe_mem_free(Memory.SRAM);
       Memory.SRAM = NULL;
    }
    if (Memory.VRAM)
    {
-      free(Memory.VRAM);
+      sfe_mem_free(Memory.VRAM);
       Memory.VRAM = NULL;
    }
    if (Memory.ROM)
    {
-      free(Memory.ROM);
+      sfe_mem_free(Memory.ROM);
       Memory.ROM = NULL;
    }
    if (Memory.FillRAM)
    {
-      free(Memory.FillRAM);
+      sfe_mem_free(Memory.FillRAM);
       Memory.FillRAM = NULL;
    }
 
-   if (IPPU.TileCached)
-   {
-      free(IPPU.TileCached);
-      IPPU.TileCached = NULL;
-   }
-
+#ifndef DISABLE_TILE_CACHE
    if (IPPU.TileCache)
    {
-      free(IPPU.TileCache);
+      sfe_mem_free(IPPU.TileCache);
       IPPU.TileCache = NULL;
    }
+#endif
 
    if (bytes0x2000)
    {
-      free(bytes0x2000);
+      sfe_mem_free(bytes0x2000);
       bytes0x2000 = NULL;
    }
 
@@ -764,7 +760,7 @@ void S9xDeinterleaveType2(bool reset)
                }
             }
          }
-         free(tmp);
+         sfe_mem_free(tmp);
          tmp = NULL;
       }
    }

@@ -28,7 +28,7 @@ void S9xDeinitAPU()
 {
    if (IAPU.RAM)
    {
-      free(IAPU.RAM);
+      sfe_mem_free(IAPU.RAM);
       IAPU.RAM = NULL;
    }
 }
