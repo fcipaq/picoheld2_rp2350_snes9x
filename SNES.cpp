@@ -19,6 +19,7 @@
 #include "pico/flash.h"
 #include "pico/time.h"
 #include "hardware/vreg.h"
+#include "hardware/watchdog.h"
 
 #include "pico/stdlib.h"  // overclock
 #include "hardware/clocks.h"
@@ -404,8 +405,14 @@ int main(void)
 
     while (1) {
       ctrl_button_state_update();
+
+      watchdog_disable();
+      
       if (ctrl_is_pressed(BUTTON_SW))
         emumgr_menu(fb_back);
+      
+      watchdog_enable(1000, true);
+      watchdog_update(); 
 /*
       if (ctrl_is_pressed(BUTTON_L)) {
         manual_framedrop = 1;

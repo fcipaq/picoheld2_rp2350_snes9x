@@ -720,7 +720,7 @@ void S9xDeinterleaveType2(bool reset)
          blocks [i] = (i & ~0xF) | ((i & 3) << 2) | ((i & 12) >> 2);
       }
 
-      tmp = (uint8_t*) malloc(0x10000);
+      tmp = (uint8_t*) sfe_mem_malloc(0x10000);
 
       if (tmp)
       {
