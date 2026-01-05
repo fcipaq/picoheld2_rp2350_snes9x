@@ -103,12 +103,10 @@ int supply_type_last = -1;
 #define MENU_REPEAT_START (500)
 #define MENU_REPEAT_DELAY (100)
 
-#define MENU_OFFSET_X (30)
-#define MENU_OFFSET_Y (30)
-#define MENU_BORDERS_X (10)
-#define MENU_BORDERS_Y (10)
+#define MENU_OFFSET_X (30)  // aobsolete
 
-#define MENU_MARGIN_VERTICAL_SCROLLBAR (15)
+#define MENU_MIN_X_CLEAR (40)
+#define MENU_MIN_Y_CLEAR (20)
 
 #define MENU_MAX_ITEMS (100)
 #define MENU_MAX_DIR_ITEMS (100)
@@ -761,15 +759,17 @@ int progress_bar(char* caption, int value, gbuffer_t fb) {
     return -1;
   
   gbuffer_t fb_back;
+  lcd.get_backbuffer(&fb_back);
 
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
   color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
 
+  int menu_border_width = 12;
+
   font_t* menu_font = (font_t*) MENU_FONT;
-  int menu_offset_x = MENU_OFFSET_X;
+  int menu_offset_x = (gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2 + menu_border_width;
   int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
   
-  lcd.get_backbuffer(&fb_back);
   blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
   if (menu_first_run)
     stars_draw(fb_back);
@@ -806,7 +806,10 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
   color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
 
   font_t* menu_font = (font_t*) MENU_FONT;
-  int menu_offset_x = MENU_OFFSET_X;
+
+  int menu_border_width = 12;
+  int menu_offset_x = (gbuf_get_width(fb) - gbuf_get_width(rect_image_small)) / 2 + menu_border_width;
+
   int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
   int bar_height = 10;
   int menu_height = font_get_height(menu_font) + bar_height;
@@ -905,6 +908,39 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
 
 }
 
+int draw_rectangle(coord_t x, coord_t y, coord_t width, coord_t height, int translucency, gbuffer_t fb) {
+  //jumpy
+  gbuffer_t fb_tmp;
+
+  if (gbuf_create(&fb_tmp, width, height, (void*) sfe_mem_malloc(width * height * 2)) != BUF_SUCCESS) {
+    message("error: no psram"); 
+    return -1;
+  }
+
+  draw_rect_fill(0,
+                 0,
+                 width - 1,
+                 height - 1,
+                 0x2124,
+                 fb_tmp);
+  
+  draw_line(gbuf_get_width(corner_top_left), 0, width - gbuf_get_width(corner_top_left) - 1, 0, 0xa514, fb_tmp);
+  draw_line(0, gbuf_get_height(corner_top_left), 0, height - gbuf_get_height(corner_bottom_left), 0xa514, fb_tmp);
+  draw_line(width - 1, gbuf_get_height(corner_top_left), width - 1, height - gbuf_get_height(corner_bottom_left), 0x0000, fb_tmp);
+  draw_line(gbuf_get_width(corner_top_left), height - 1, width - gbuf_get_width(corner_top_left) - 1, height - 1, 0x0000, fb_tmp);
+
+  blit_buf(0, 0, BLIT_NO_ALPHA, corner_top_left, fb_tmp);
+  blit_buf(0, height - gbuf_get_height(corner_bottom_left), BLIT_NO_ALPHA, corner_bottom_left, fb_tmp);
+  blit_buf(width - gbuf_get_width(corner_top_right), 0, BLIT_NO_ALPHA, corner_top_right, fb_tmp);
+  blit_buf(width - gbuf_get_width(corner_bottom_right), height - gbuf_get_height(corner_bottom_right), BLIT_NO_ALPHA, corner_bottom_right, fb_tmp);
+  
+  blit_buf_blend(x, y, 0xf81f, translucency, fb_tmp, fb);
+  
+  sfe_mem_free(gbuf_get_dat_ptr(fb_tmp));
+  return 0;
+
+}
+
 int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
   gbuffer_t fb_back;
 
@@ -914,20 +950,44 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
   color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
 
   float menu_caption_offset = 1.2;
-  int menu_offset_x = (gbuf_get_width(fb) - gbuf_get_width(rect_image_big)) / 2 + MENU_BORDERS_X;
-  int menu_offset_y = (gbuf_get_height(fb) - gbuf_get_height(rect_image_big)) / 2 + MENU_BORDERS_Y;
-  int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
-  int menu_height = gbuf_get_height(fb) - 2 * menu_offset_y;
   font_t* menu_font = (font_t*) MENU_FONT;
   int menu_items_clearance_y = 5;
-  int max_vis_items = (menu_height - (font_get_height(menu_font) + menu_items_clearance_y) * menu_caption_offset) / (font_get_height(menu_font) + menu_items_clearance_y);
   int num_itms = get_item_cnt(item_list) - 1;  // minus the caption
 
-  while (max_vis_items > num_itms) {
-    menu_items_clearance_y++;
-    max_vis_items = (menu_height - (font_get_height(menu_font) + menu_items_clearance_y) * menu_caption_offset) / (font_get_height(menu_font) + menu_items_clearance_y);
+  int menu_border_width = 12;
+  int menu_border_height = 12;
+  int menu_scrollbar_width = 3 + gbuf_get_width(bar_up_full_image);
+
+  int menu_height = menu_caption_offset - menu_items_clearance_y;  // difference for clearance of caption
+  for (int i = 0; i < get_item_cnt(item_list); i++) {
+    menu_height += font_get_height(menu_font) + menu_items_clearance_y;
+    if (menu_height > (gbuf_get_height(fb) - MENU_MIN_Y_CLEAR * 2 - menu_border_height * 2)) {
+      menu_height = gbuf_get_height(fb) - MENU_MIN_Y_CLEAR * 2 - menu_border_height * 2;
+      break;
+    }
   }
-   
+
+  int max_vis_items = (menu_height - font_get_height(menu_font) - menu_caption_offset) / (font_get_height(menu_font) + menu_items_clearance_y);
+
+  int menu_width = 0;
+  if (max_vis_items < num_itms)
+    menu_width = menu_scrollbar_width * 2;
+  else
+    menu_scrollbar_width = 0;
+
+  for (int i = 0; i < get_item_cnt(item_list); i++) {
+    int len = font_get_string_width(get_item(i, item_list), menu_font);
+    if (len > menu_width)
+      menu_width = len;
+    if (menu_width > (gbuf_get_width(fb) - MENU_MIN_X_CLEAR * 2 - menu_border_width * 2)) {
+      menu_width = gbuf_get_width(fb) - MENU_MIN_X_CLEAR * 2 - menu_border_width * 2;
+      break;
+    }
+  }
+  
+  int menu_offset_x = (gbuf_get_width(fb) - menu_width) / 2;
+  int menu_offset_y = (gbuf_get_height(fb) - menu_height) / 2;
+
   int b_debounce = 0;
   int b_debounce_timer = 0;
   int b_repeater = 0;
@@ -950,7 +1010,12 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
     if (menu_first_run)
       stars_draw(fb_back);
 
-    blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_big)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_big)) / 2, 0xf81f, translucency, rect_image_big, fb_back);
+    draw_rectangle(menu_offset_x - menu_border_width,
+                   menu_offset_y - menu_border_height,
+                   menu_width + menu_border_width * 2,
+                   menu_height + menu_border_height * 2,
+                   translucency,
+                   fb_back);
     
     // caption
     font_write_string_centered(1 + menu_offset_x + menu_width / 2, 1 + menu_offset_y, menu_font_shadow_color, get_item(0, item_list), menu_font, fb_back);
@@ -976,7 +1041,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           h_font_scrl_delay = 30;
           h_font_scrl_timer = millis();
           if (h_font_scrl_dir == 1) {
-            if (len + h_font_scrl_pos > (menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR))
+            if (len + h_font_scrl_pos > (menu_width - menu_scrollbar_width))
               h_font_scrl_pos--;
             else
               h_font_scrl_dir = -1;
@@ -991,7 +1056,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           font_write_string_centered_crop(menu_offset_x + menu_width / 2 + h_font_scrl_pos + 1,
                                           menu_offset_y + 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
                                           menu_offset_x + 1,
-                                          menu_offset_x + 1 + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                          menu_offset_x + 1 + menu_width - menu_scrollbar_width,
                                           menu_font_shadow_color,
                                           text,
                                           menu_font,
@@ -999,7 +1064,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           font_write_string_centered_crop(menu_offset_x + menu_width / 2 + h_font_scrl_pos + 0,
                                           menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
                                           menu_offset_x,
-                                          menu_offset_x + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                          menu_offset_x + menu_width - menu_scrollbar_width,
                                           menu_font_selected_color,
                                           text,
                                           menu_font,
@@ -1008,7 +1073,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           font_write_string_crop(menu_offset_x + h_font_scrl_pos + 1,
                                  menu_offset_y + 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
                                  menu_offset_x + 1,
-                                 menu_offset_x + 1 + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                 menu_offset_x + 1 + menu_width - menu_scrollbar_width,
                                  menu_font_shadow_color,
                                  text,
                                  menu_font,
@@ -1016,7 +1081,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           font_write_string_crop(menu_offset_x + h_font_scrl_pos + 0,
                                  menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
                                  menu_offset_x,
-                                 menu_offset_x + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                 menu_offset_x + menu_width - menu_scrollbar_width,
                                  menu_font_selected_color,
                                  text,
                                  menu_font,
@@ -1027,7 +1092,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           font_write_string_centered_crop(menu_offset_x + menu_width / 2 + 1,
                                           menu_offset_y + 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
                                           menu_offset_x + 1,
-                                          menu_offset_x + 1 + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                          menu_offset_x + 1 + menu_width - menu_scrollbar_width,
                                           menu_font_shadow_color,
                                           text,
                                           menu_font,
@@ -1035,7 +1100,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           font_write_string_centered_crop(menu_offset_x + menu_width / 2 + 0,
                                           menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
                                           menu_offset_x,
-                                          menu_offset_x + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                          menu_offset_x + menu_width - menu_scrollbar_width,
                                           menu_font_unselected_color,
                                           text,
                                           menu_font,
@@ -1044,7 +1109,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           font_write_string_crop(menu_offset_x + 1,
                                  menu_offset_y + 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
                                  menu_offset_x + 1,
-                                 menu_offset_x + 1 + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                 menu_offset_x + 1 + menu_width - menu_scrollbar_width,
                                  menu_font_shadow_color,
                                  text,
                                  menu_font,
@@ -1052,7 +1117,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           font_write_string_crop(menu_offset_x + 0,
                                  menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
                                  menu_offset_x,
-                                 menu_offset_x + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                 menu_offset_x + menu_width - menu_scrollbar_width,
                                  menu_font_unselected_color,
                                  text,
                                  menu_font,
