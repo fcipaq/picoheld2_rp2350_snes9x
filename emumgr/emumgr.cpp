@@ -249,6 +249,9 @@ void stars_draw(gbuffer_t fb) {
   col[1] = rgb_col_888_565(150, 150, 150);
   col[2] = rgb_col_888_565(200, 200, 200);
 
+  uint16_t* gbuf = (uint16_t*) gbuf_get_dat_ptr(fb);
+  int width = gbuf_get_width(fb);
+
   for (int i = 0; i < NUM_STARS; i++) {
       switch (stars_speed[i]) {
         case 0:
@@ -261,7 +264,8 @@ void stars_draw(gbuffer_t fb) {
           stars_color = col[2];
           break;
       }
-    draw_pixel(stars_x[i], stars_y[i], stars_color, fb);
+    //draw_pixel(stars_x[i], stars_y[i], stars_color, fb);
+    gbuf[stars_x[i] + stars_y[i] * width] = stars_color;
   }
 }
 
@@ -902,7 +906,7 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
 }
 
 int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
-  gbuffer_t fb_back, fb_font;
+  gbuffer_t fb_back;
 
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
   color_t menu_font_selected_color = MENU_FONT_SELECTED_COLOR;
@@ -940,12 +944,6 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
   int h_font_scrl_dir = 1;
   uint32_t h_font_scrl_delay = 1000;
 
-  if (gbuf_create(&fb_font, menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR, menu_height, (void*) sfe_mem_malloc((menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR) * menu_height * 2)) != BUF_SUCCESS) {
-    message("error: no psram"); 
-    cur_itm = -1;
-    goto leave;
-  }
-  
   while (1) {
     lcd.get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
@@ -958,7 +956,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
     font_write_string_centered(1 + menu_offset_x + menu_width / 2, 1 + menu_offset_y, menu_font_shadow_color, get_item(0, item_list), menu_font, fb_back);
     font_write_string_centered(menu_offset_x + menu_width / 2, menu_offset_y, menu_font_caption_color, get_item(0, item_list), menu_font, fb_back);
 
-    draw_rect_fill(0, 0, menu_width - 1, menu_height - 1, 0xf81f, fb_font);
+    //draw_rect_fill(0, 0, menu_width - 1, menu_height - 1, 0xf81f, fb_back);
 
     for (int i = 0; i < max_vis_items; i++) {
       
@@ -990,25 +988,79 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
           }
         }
         if (centered) {
-          font_write_string_centered(menu_width / 2 + h_font_scrl_pos + 1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
-          font_write_string_centered(menu_width / 2 + h_font_scrl_pos + 0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_selected_color, text, menu_font, fb_font);
+          font_write_string_centered_crop(menu_offset_x + menu_width / 2 + h_font_scrl_pos + 1,
+                                          menu_offset_y + 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
+                                          menu_offset_x + 1,
+                                          menu_offset_x + 1 + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                          menu_font_shadow_color,
+                                          text,
+                                          menu_font,
+                                          fb_back);
+          font_write_string_centered_crop(menu_offset_x + menu_width / 2 + h_font_scrl_pos + 0,
+                                          menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
+                                          menu_offset_x,
+                                          menu_offset_x + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                          menu_font_selected_color,
+                                          text,
+                                          menu_font,
+                                          fb_back);
         } else {
-          font_write_string(h_font_scrl_pos + 1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
-          font_write_string(h_font_scrl_pos + 0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_selected_color, text, menu_font, fb_font);
+          font_write_string_crop(menu_offset_x + h_font_scrl_pos + 1,
+                                 menu_offset_y + 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
+                                 menu_offset_x + 1,
+                                 menu_offset_x + 1 + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                 menu_font_shadow_color,
+                                 text,
+                                 menu_font,
+                                 fb_back);
+          font_write_string_crop(menu_offset_x + h_font_scrl_pos + 0,
+                                 menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
+                                 menu_offset_x,
+                                 menu_offset_x + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                 menu_font_selected_color,
+                                 text,
+                                 menu_font,
+                                 fb_back);
         }
       } else {
         if (centered) {
-          font_write_string_centered(menu_width / 2 + 1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
-          font_write_string_centered(menu_width / 2 + 0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_unselected_color, text, menu_font, fb_font);
+          font_write_string_centered_crop(menu_offset_x + menu_width / 2 + 1,
+                                          menu_offset_y + 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
+                                          menu_offset_x + 1,
+                                          menu_offset_x + 1 + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                          menu_font_shadow_color,
+                                          text,
+                                          menu_font,
+                                          fb_back);
+          font_write_string_centered_crop(menu_offset_x + menu_width / 2 + 0,
+                                          menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
+                                          menu_offset_x,
+                                          menu_offset_x + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                          menu_font_unselected_color,
+                                          text,
+                                          menu_font,
+                                          fb_back);
         } else {
-          font_write_string(1, 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_shadow_color, text, menu_font, fb_font);
-          font_write_string(0, (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y), menu_font_unselected_color, text, menu_font, fb_font);
+          font_write_string_crop(menu_offset_x + 1,
+                                 menu_offset_y + 1 + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
+                                 menu_offset_x + 1,
+                                 menu_offset_x + 1 + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                 menu_font_shadow_color,
+                                 text,
+                                 menu_font,
+                                 fb_back);
+          font_write_string_crop(menu_offset_x + 0,
+                                 menu_offset_y + (i + menu_caption_offset) * (font_get_height(menu_font) + menu_items_clearance_y),
+                                 menu_offset_x,
+                                 menu_offset_x + menu_width - MENU_MARGIN_VERTICAL_SCROLLBAR,
+                                 menu_font_unselected_color,
+                                 text,
+                                 menu_font,
+                                 fb_back);
         }
       }
 
     }
-
-    blit_buf(menu_offset_x, menu_offset_y, 0xf81f, fb_font, fb_back);
 
     // scroll arrows to indicate additional items
     int scrl_up_arrow_y = menu_offset_y + menu_caption_offset * (font_get_height(menu_font) + menu_items_clearance_y);
@@ -1113,8 +1165,6 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
   }
 
 leave:
-  if (gbuf_get_dat_ptr(fb_font))
-    sfe_mem_free((void*) gbuf_get_dat_ptr(fb_font));
 
   return cur_itm;
 

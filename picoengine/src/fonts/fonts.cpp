@@ -105,12 +105,72 @@ void font_put_char(coord_t pos_x, coord_t pos_y, color_t col, char c, font_t* fo
 	
 }
 
+void font_put_char_crop(coord_t pos_x, coord_t pos_y, coord_t start_x, coord_t end_x, color_t col, char c, font_t* font, gbuffer_t dst) {
+  uint8_t charWidth = font_get_char_width(c, font);
+
+  // character not defined
+  if (charWidth == 0)
+    return;
+
+  if (c < font[FONT_HEADER_FRST_CHAR] || c > font[FONT_HEADER_LST_CHAR])
+    return;
+
+  uint8_t charHeight = font[FONT_HEADER_FNT_HEIGHT];
+  uint16_t bufWidth = gbuf_get_width(dst);
+  uint16_t bufHeight = gbuf_get_height(dst);
+    
+  uint32_t total_width = 0;
+  
+  for (char i = font[FONT_HEADER_FRST_CHAR]; i < c; i++)
+      total_width += font_get_char_width(i, font);
+
+  uint32_t total_bits = (total_width * charHeight);
+
+  uint16_t data_ofs = font_get_data_ofs(font) + total_bits / 8;
+
+  uint8_t bitcnt = (uint32_t) total_bits % 8;
+  uint8_t datcnt = 0;
+
+  char fnt_dat = font[data_ofs];
+
+   for (uint16_t x = 0; x < charWidth; x++)
+    for (uint16_t y = 0; y < charHeight; y++)
+    {
+      if (bitcnt == 8) {
+        bitcnt = 0;
+        datcnt++;
+        fnt_dat = font[data_ofs + datcnt];
+      }
+            
+      if ((pos_y + y) >= 0 && (pos_y + y) < bufHeight &&
+          (pos_x + x) >= 0 && (pos_x + x) < bufWidth &&
+          (pos_x + x) >= start_x && (pos_x + x) <= end_x) {
+        if (fnt_dat & (1 << bitcnt))
+          dst.data[(pos_y + y) * bufWidth + (pos_x + x)] = col;
+      }
+      
+      bitcnt++;
+    }
+	
+}
+
 void font_write_string(coord_t pos_x, coord_t pos_y, color_t col, char* str, font_t* font, gbuffer_t dst) {
   int h = 0;
   int ofs_x = 0;
   
   while (str[h] != 0) {
     font_put_char(pos_x + ofs_x, pos_y, col, str[h], font, dst);
+    ofs_x += font_get_char_width(str[h], font) + 1;
+    h++;
+  }
+}
+
+void font_write_string_crop(coord_t pos_x, coord_t pos_y, coord_t start_x, coord_t end_x, color_t col, char* str, font_t* font, gbuffer_t dst) {
+  int h = 0;
+  int ofs_x = 0;
+  
+  while (str[h] != 0) {
+    font_put_char_crop(pos_x + ofs_x, pos_y, start_x, end_x, col, str[h], font, dst);
     ofs_x += font_get_char_width(str[h], font) + 1;
     h++;
   }
@@ -130,4 +190,8 @@ int font_get_string_width(char* str, font_t* font) {
 
 void font_write_string_centered(coord_t pos_x, coord_t y, color_t col, char* str, font_t* font, gbuffer_t dst) {
   font_write_string(pos_x - font_get_string_width(str, font) / 2, y, col, str, font, dst);
+}
+
+void font_write_string_centered_crop(coord_t pos_x, coord_t y, coord_t start_x, coord_t end_x, color_t col, char* str, font_t* font, gbuffer_t dst) {
+  font_write_string_crop(pos_x - font_get_string_width(str, font) / 2, y, start_x, end_x, col, str, font, dst);
 }

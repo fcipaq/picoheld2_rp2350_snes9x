@@ -105,5 +105,8 @@ void font_write_string(coord_t pos_x, coord_t pos_y, color_t col, char* str, fon
  */
 void font_write_string_centered(coord_t pos_x, coord_t y, color_t col, char* str, font_t* font, gbuffer_t dst);
 
+void font_write_string_crop(coord_t pos_x, coord_t pos_y, coord_t start_x, coord_t end_x, color_t col, char* str, font_t* font, gbuffer_t dst);
+void font_write_string_centered_crop(coord_t pos_x, coord_t y, coord_t start_x, coord_t end_x, color_t col, char* str, font_t* font, gbuffer_t dst);
+
 
 #endif //FONTS_H
