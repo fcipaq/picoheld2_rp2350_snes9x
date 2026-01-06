@@ -63,8 +63,9 @@ extern "C" {
 
 uint32_t millis();
 uint32_t micros();
-int progress_bar(char* caption, int value, gbuffer_t fb);
-int message(char* s);
+int progress_bar(const char* caption, int value, gbuffer_t fb);
+void message(const char* item_list, bool centered, uint32_t delay, gbuffer_t fb);
+int selection_menu(char* item_list, bool centered, bool no_highlight, gbuffer_t fb);
 
 /* ====================================================== variables ====================================================== */
 // misc
@@ -112,26 +113,45 @@ int supply_type_last = -1;
 #define SAVESTATE_DIRECTORY "/roms/snes/save/"
 #define ROM_DIRECTORY "/roms/snes/"
 
-#define RM_SUCCESS 0
-#define RM_ERR_NO_DIR -1
-#define RM_ERR_NO_ROMS -2
-#define RM_ERR_READING_ROM -3
-#define RM_ERR_FLASHING_ROM -4
+#define SUCCESS 0
+#define ERR_UNSPEC -1
+#define ERR_SD_OPEN_DIR -2
+#define ERR_SD_OPEN_FIL -3
+#define ERR_SD_READING -4
+#define ERR_SD_WRITING -5
+#define ERR_LOAD_ROM -6
+#define ERR_PSRAM -7
+#define ERR_ABORTED - 8
 
 #define MENU_LST "\xff"
 
 const char nullstring = 0;
 const char terminatorstring = 255;
 
-const char* confirm_menu_items_overwrite[] = { STR_CONFIRM_OVERWRITE,
-                                               STR_YES,
-                                               STR_NO,
-                                               MENU_LST };
+const char str_gamestate_saved[] = { STR_GAMESTATE_SAVED"\0"\
+                                     MENU_LST };
 
-const char* confirm_menu_items_bl[] = { STR_CONFIRM_BL,
-                                                STR_YES,
-                                                STR_NO,
-                                                MENU_LST };
+const char str_err_sd_mount[] = { STR_ERR_SD_MOUNT"\0"\
+                                  MENU_LST };
+
+const char str_err_aborted[] = { STR_ERR_ABORTED"\0"\
+                                 MENU_LST };
+
+const char str_err_open_file[] = { STR_ERROR"\0"\
+                                   STR_ERR_OPEN_FILE"\0"\
+                                   MENU_LST };
+
+const char str_err_open_dir[] = { STR_ERROR"\0"\
+                                  STR_ERR_OPEN_DIR"\0"\
+                                  MENU_LST };
+
+const char str_err_read_file[] = { STR_ERROR"\0"\
+                                   STR_ERR_OPEN_FILE"\0"\
+                                   MENU_LST };
+
+const char str_err_write_file[] = { STR_ERROR"\0"\
+                                    STR_ERR_OPEN_FILE"\0"\
+                                    MENU_LST };
 
 const char main_menu_items[] = { STR_MAIN_TITLE"\0"\
 					 									     STR_LAUNCH"\0"\
@@ -144,15 +164,6 @@ const char main_menu_items[] = { STR_MAIN_TITLE"\0"\
                                  STR_SHUTDOWN"\0"\
                                  MENU_LST };
 
-const char* opt_menu_items[] = { STR_OPTIONS_MENU,
-                                                           STR_BUTTONS,
-                                                           STR_TOGGLE_FPS,
-                                                           STR_TOGGLE_Z80,
-                                                           STR_LAUNCH_BL,
-                                                           //                                                           "WAs",
-                                                           STR_GO_BACK,
-                                                           MENU_LST };
-
 const char save_menu_items[] = { STR_SAVE_STATE"\0"\
                                  STR_SLOT_1"\0"\
                                  STR_SLOT_2"\0"\
@@ -163,44 +174,34 @@ const char save_menu_items[] = { STR_SAVE_STATE"\0"\
                                  STR_GO_BACK"\0"\
                                  MENU_LST };
 
-const char* load_menu_items[] = { STR_LOAD_STATE,
-                                                             STR_SLOT_1,
-                                                             STR_SLOT_2,
-                                                             STR_SLOT_3,
-                                                             STR_SLOT_4,
-                                                             STR_SLOT_5,
-                                                             STR_SLOT_6,
-                                                             STR_GO_BACK,
-                                                             MENU_LST };
+const char load_menu_items[] = { STR_LOAD_STATE"\0"\
+                                  STR_SLOT_1"\0"\
+                                  STR_SLOT_2"\0"\
+                                  STR_SLOT_3"\0"\
+                                  STR_SLOT_4"\0"\
+                                  STR_SLOT_5"\0"\
+                                  STR_SLOT_6"\0"\
+                                  STR_GO_BACK"\0"\
+                                  MENU_LST };
+
+const char str_err_rom[] = {  STR_ERROR"\0"\
+                              STR_ERR_ROM"\0"\
+                              MENU_LST };
 
 const char* bri_menu = STR_BRIGHTNESS;
 
 const char* snd_menu = STR_SOUND;
 
-const char* btn_menu_items[] = { STR_BTN_MENU,
-														   STR_BTN_ABC,
-                                                           STR_BTN_ACB,
-                                                           STR_BTN_BAC,
-                                                           STR_BTN_BCA,
-                                                           STR_BTN_CAB,
-                                                           STR_BTN_CBA,
-                                                           STR_GO_BACK,
-                                                          MENU_LST };
+const char* str_sel_rom = STR_SEL_ROM;
 
-#define ROM_FILE_LIST_NAME_LENGTH 25
+const char str_loading[] = {  STR_LOADING"\0"\
+                              MENU_LST };
 
-#define NUM_ROM_FILE_LIST 8
+const char str_go_back[] = {  STR_GO_BACK"\0"\
+                              MENU_LST };
 
-const char* rom_file_list_header = STR_ROM_SELECTOR_CAPTION;
-
-#define MSG_SAVE_NUM_ROWS 2
-
-const char* message_save[MSG_SAVE_NUM_ROWS] = { STR_SAVING_GAME_STATE,
-                                                        STR_PLEASE_WAIT };
-
-#define MSG_ERROR_NUM_ROWS 1
-
-const char* message_error[MSG_ERROR_NUM_ROWS] = { STR_ERROR };
+const char str_load_game_first[] = { STR_LOAD_GAME_FIRST"\0"\
+                                     MENU_LST };
 
 int stars_init() {
   if (stars_x == NULL) {
@@ -210,8 +211,8 @@ int stars_init() {
     stars_color = (uint8_t*) sfe_mem_malloc(NUM_STARS);
 
     if (!stars_x || !stars_y || !stars_color || !stars_speed) {
-      message("error: no psram");
-      return -1;
+      printf("Error: Cannot allocate PSRAM\n");
+      return ERR_UNSPEC;
     }
 
     for (int i = 0; i < NUM_STARS; i++) {
@@ -266,7 +267,7 @@ void draw_battery(int x, int y, int percent, gbuffer_t fb_back) {
 
     if (gbuf_get_dat_ptr(draw_battery_gbuf) == NULL) {
       if (gbuf_create(&draw_battery_gbuf, gbuf_get_width(battery_normal_image), gbuf_get_height(battery_normal_image), (void*) sfe_mem_malloc(gbuf_get_width(battery_normal_image) * gbuf_get_height(battery_normal_image) * 2)) != BUF_SUCCESS) {
-        message("error: no psram"); 
+        printf("Error: Cannot allocate PSRAM\n");
         return;
       }       
     }
@@ -304,8 +305,8 @@ void draw_battery(int x, int y, int percent, gbuffer_t fb_back) {
 
 }
 
-int message(char* s) {
-  return 0;
+void message(const char* item_list, bool centered, uint32_t delay, gbuffer_t fb) {
+  selection_menu((char*) item_list, centered, true, fb);
 };
 
 int sd_deinit() {
@@ -313,7 +314,7 @@ int sd_deinit() {
     return true;
 
   f_mount(NULL, "", 0); // unmount
-  sleep_ms(500);
+  //sleep_ms(500);
   pwr_sd_sply(0);
 
   m_sd_init = false;
@@ -324,8 +325,6 @@ int sd_deinit() {
 int sd_init() {
   if (m_sd_init)
     return true;
-
-  int ret = 0;
 
   FRESULT fr;     /* FatFs return code */
 
@@ -372,7 +371,7 @@ int sd_init() {
 
   m_sd_init = true;
 
-  return ret;
+  return true;
 }
 
 int load_rom_from_sd(char* filename, gbuffer_t fb) {
@@ -387,8 +386,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
 
   if (fr != FR_OK) {
       printf("open file failed: %d\n", (int) fr);
-      //message("open file failed");
-      return -1;
+      return ERR_SD_OPEN_FIL;
   }
   
   printf("open complete\n");
@@ -403,7 +401,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
 
   if (!buf) {
     printf("unable to get buffer (%d bytes).\n", filesize);
-    ret = -2;
+    ret = ERR_PSRAM;
     goto bailout;
   }
 
@@ -419,7 +417,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
     unread_bytes -= bytes_read;
     if ((fr != FR_OK) && unread_bytes) {
       printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
-      ret = -3;
+      ret = ERR_SD_READING;
       goto bailout;
     }
     
@@ -427,7 +425,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
     if (percent >= step) {
       step += 5;  // smoothness
       printf("Loading from SD: %d %\n", percent);
-      progress_bar(STR_LOADING, percent, fb);
+      progress_bar(str_loading, percent, fb);
     }
   }
 
@@ -448,7 +446,7 @@ static bool screenshot_handler(const char *filename, int width, int height)
 
 int save_state_handler(char *filename)
 {
-  int ret = 0;
+  int ret = SUCCESS;
 
   printf("Savestate handler called: %s\n", filename);
 
@@ -459,76 +457,73 @@ int save_state_handler(char *filename)
 
   if (fr != FR_OK) {
     printf("open file failed: %d\n", (int) fr);
-    message("open save file failed");
-    return -1;  // error opening
+    return ERR_SD_OPEN_FIL;  // error opening
   }
 
   UINT bw;
 
   fr = f_write(&fil, (uint8_t*) &CPU, sizeof(CPU), &bw);
   if ((fr != FR_OK) || (bw != sizeof(CPU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) &ICPU, sizeof(ICPU), &bw);
   if ((fr != FR_OK) || (bw != sizeof(ICPU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) &PPU, sizeof(PPU), &bw);
   if ((fr != FR_OK) || (bw != sizeof(PPU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) &DMA, sizeof(DMA), &bw);
   if ((fr != FR_OK) || (bw != sizeof(DMA))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) Memory.VRAM, VRAM_SIZE, &bw);
   if ((fr != FR_OK) || (bw != VRAM_SIZE)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) Memory.RAM, RAM_SIZE, &bw);
   if ((fr != FR_OK) || (bw != RAM_SIZE)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) Memory.SRAM, SRAM_SIZE, &bw);
   if ((fr != FR_OK) || (bw != SRAM_SIZE)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &bw);
   if ((fr != FR_OK) || (bw != FILLRAM_SIZE)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) &APU, sizeof(APU), &bw);
   if ((fr != FR_OK) || (bw != sizeof(APU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) &IAPU, sizeof(IAPU), &bw);
   if ((fr != FR_OK) || (bw != sizeof(IAPU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) IAPU.RAM, 0x10000, &bw);
   if ((fr != FR_OK) || (bw != 0x10000)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
   fr = f_write(&fil, (uint8_t*) &SoundData, sizeof(SoundData), &bw);
   if ((fr != FR_OK) || (bw != sizeof(SoundData))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_WRITING;
     goto bailout;
   }
 
   printf("Game state saved.\n\n");
-
-  ret = 0;
 
   bailout:
   
@@ -539,7 +534,7 @@ int save_state_handler(char *filename)
 
 int load_state_handler(char *filename)
 {
-  int ret = 0;
+  int ret = SUCCESS;
 
   FIL fil;
   FRESULT fr;
@@ -550,8 +545,7 @@ int load_state_handler(char *filename)
 
   if (fr != FR_OK) {
     printf("open file failed: %d\n", (int) fr);
-    message("open save file failed");
-    return -1;  // error opening
+    return ERR_SD_OPEN_FIL;
   }
 
   UINT br;
@@ -563,62 +557,62 @@ int load_state_handler(char *filename)
 
   fr = f_read (&fil, (uint8_t*) &CPU, sizeof(CPU), &br);
   if ((fr != FR_OK) || (br != sizeof(CPU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) &ICPU, sizeof(ICPU), &br);
   if ((fr != FR_OK) || (br != sizeof(ICPU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) &PPU, sizeof(PPU), &br);
   if ((fr != FR_OK) || (br != sizeof(PPU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) &DMA, sizeof(DMA), &br);
   if ((fr != FR_OK) || (br != sizeof(DMA))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) Memory.VRAM, VRAM_SIZE, &br);
   if ((fr != FR_OK) || (br != VRAM_SIZE)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) Memory.RAM, RAM_SIZE, &br);
   if ((fr != FR_OK) || (br != RAM_SIZE)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) Memory.SRAM, SRAM_SIZE, &br);
   if ((fr != FR_OK) || (br != SRAM_SIZE)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &br);
   if ((fr != FR_OK) || (br != FILLRAM_SIZE)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) &APU, sizeof(APU), &br);
   if ((fr != FR_OK) || (br != sizeof(APU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) &IAPU, sizeof(IAPU), &br);
   if ((fr != FR_OK) || (br != sizeof(IAPU))) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) IAPU.RAM, 0x10000, &br);
   if ((fr != FR_OK) || (br != 0x10000)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
   fr = f_read (&fil, (uint8_t*) &SoundData, sizeof(SoundData), &br);
   if (br != sizeof(SoundData)) {
-    ret = -2;  // error writing
+    ret = ERR_SD_READING;
     goto bailout;
   }
 
@@ -716,7 +710,7 @@ int get_item_cnt(char* buffer) {
 
   }
 
-  return -1;  // no terminator found within boundaries
+  return ERR_UNSPEC;
 }
 
 int get_directory(char *path, char* buffer) {
@@ -741,7 +735,7 @@ int get_directory(char *path, char* buffer) {
         f_closedir(&dir);
     } else {
         printf("Error reading directory: \"%s\". (%u)\n", path, res);
-        return -1;
+        return ERR_SD_OPEN_DIR;
     }
 
     buffer[buf_pos] = terminatorstring;
@@ -752,8 +746,8 @@ int draw_rectangle(coord_t x, coord_t y, coord_t width, coord_t height, int tran
   gbuffer_t fb_tmp;
 
   if (gbuf_create(&fb_tmp, width, height, (void*) sfe_mem_malloc(width * height * 2)) != BUF_SUCCESS) {
-    message("error: no psram"); 
-    return -1;
+    printf("Error: Cannot allocate PSRAM\n");
+    return ERR_PSRAM;
   }
 
   draw_rect_fill(0,
@@ -780,9 +774,9 @@ int draw_rectangle(coord_t x, coord_t y, coord_t width, coord_t height, int tran
 
 }
 
-int progress_bar(char* caption, int value, gbuffer_t fb) {
+int progress_bar(const char* caption, int value, gbuffer_t fb) {
   if ((value < 0) || (value > 100))
-    return -1;
+    return ERR_UNSPEC;
   
   gbuffer_t fb_back;
   lcd.get_backbuffer(&fb_back);
@@ -814,8 +808,8 @@ int progress_bar(char* caption, int value, gbuffer_t fb) {
                   translucency,
                   fb_back);
 
-  font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, caption, menu_font, fb_back);
-  font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, caption, menu_font, fb_back);
+  font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
+  font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, (char*) caption, menu_font, fb_back);
 
   int bar_start = menu_offset_x + 10 + gbuf_get_width(bar_left_full_image);
   int bar_end = menu_offset_x + 10 + menu_width - 20 - gbuf_get_width(bar_right_full_image);
@@ -933,8 +927,8 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
                    translucency,
                    fb_back);
 
-    font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, caption, menu_font, fb_back);
-    font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, caption, menu_font, fb_back);
+    font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
+    font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, (char*) caption, menu_font, fb_back);
 
     //draw_rect_fill(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, menu_offset_x + 10 + (menu_width - 20) * value / 100, gbuf_get_height(fb_back) / 2 + 10, 0xffff, fb_back);
     int bar_start = menu_offset_x + 10 + gbuf_get_width(bar_left_full_image);
@@ -957,11 +951,11 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
 
 }
 
-int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
+int selection_menu(char* item_list, bool centered, bool no_highlight, gbuffer_t fb) {
   gbuffer_t fb_back;
 
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
-  color_t menu_font_selected_color = MENU_FONT_SELECTED_COLOR;
+  color_t menu_font_selected_color = no_highlight ? MENU_FONT_UNSELECTED_COLOR : MENU_FONT_SELECTED_COLOR;
   color_t menu_font_unselected_color = MENU_FONT_UNSELECTED_COLOR;
   color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
 
@@ -1270,7 +1264,7 @@ static void call_flash_range_erase(void *param) {
 int copy_rom_to_flash(gbuffer_t fb) {
 
   if (!psram_rom)
-    return -1;
+    return ERR_PSRAM;
 
   long erase_size = Memory.ROM_Size;
   uint32_t rom_flash_address = FLASH_ROM_ADDRESS;
@@ -1296,7 +1290,7 @@ int copy_rom_to_flash(gbuffer_t fb) {
     percent = 66 * (i * FLASH_SECTOR_SIZE) / erase_size;
     if (percent - percent_old > 5) {
       percent_old = percent;
-      progress_bar(STR_LOADING, percent, fb);
+      progress_bar(str_loading, percent, fb);
     }
   }
 
@@ -1309,7 +1303,7 @@ int copy_rom_to_flash(gbuffer_t fb) {
     percent = 100 - 33 * bytes_remaining / Memory.ROM_Size;
     if (percent - percent_old > 5) {
       percent_old = percent;
-      progress_bar(STR_LOADING, percent, fb);
+      progress_bar(str_loading, percent, fb);
     }
 
     bytes_remaining -= FLASH_SECTOR_SIZE;
@@ -1333,33 +1327,32 @@ int menu_loadfile(gbuffer_t fb) {
   int ret = 0;
   buffer = (char*) sfe_mem_malloc(DIRECTORY_BUFFER_SIZE + 1000);
   char* filename = &buffer[DIRECTORY_BUFFER_SIZE];
+  char* buf_tmp;
 
   if (!buffer)
-    return -2; // no free psram
+    return ERR_PSRAM;
 
   // add go back at top of list
   int pos = 0;
-  strcpy(buffer, STR_SEL_ROM);
+  strcpy(buffer, str_sel_rom);
   pos = strlen(buffer) + 1;
-  strcpy(&buffer[pos], STR_GO_BACK);
+  strcpy(&buffer[pos], str_go_back);
   pos += strlen(&buffer[pos]);
   
   res = get_directory(ROM_DIRECTORY, &buffer[pos + 1]);
-
-  // add go back at bottom of list
-  char* buf_tmp = get_item(get_item_cnt(buffer) - 1, buffer);
-  strcpy(&buf_tmp[strlen(buf_tmp) + 1], STR_GO_BACK);
-  buf_tmp[strlen(buf_tmp) + 1 + strlen(STR_GO_BACK) + 2] = terminatorstring;
-
   if (res != 0) {
-    ret = -3;  // cannot read dir
+    ret = ERR_SD_OPEN_DIR;
     goto bailout;
   }
 
-  res = selection_menu((char*) buffer, 0, fb);
+  // add go back at bottom of list
+  buf_tmp = get_item(get_item_cnt(buffer) - 1, buffer);
+  strcpy(&buf_tmp[strlen(buf_tmp) + 1], str_go_back);
+  buf_tmp[strlen(buf_tmp) + 1 + strlen(str_go_back) + 2] = terminatorstring;
 
+  res = selection_menu((char*) buffer, false, false, fb);
   if ((res == 0) || (res == (get_item_cnt(buffer) - 1))) {
-    ret = -1;  // aborted by user
+    ret = ERR_ABORTED;
     goto bailout;
   }
 
@@ -1368,10 +1361,9 @@ int menu_loadfile(gbuffer_t fb) {
 
   printf("filename to load is: %s\n", filename);
 
-  res = load_rom_from_sd(filename, fb);
-  if (res != 0) {
-    printf("load_rom_from_sd return %d\n", res);
-    ret = -4;  // error reading file
+  ret = load_rom_from_sd(filename, fb);
+  if (ret != 0) {
+    printf("load_rom_from_sd return %d\n", ret);
     goto bailout;
   }
 
@@ -1386,7 +1378,7 @@ int menu_loadfile(gbuffer_t fb) {
   S9xReset();
 
   if (!LoadROM(NULL)) {
-    ret = -5;  // error loading rom
+    ret = ERR_LOAD_ROM;
     goto bailout;
   }
  
@@ -1410,21 +1402,25 @@ void emumgr_menu(gbuffer_t fb) {
   int main_choice, sub_choice;
   char* filename = (char*) sfe_mem_malloc(520);
 
-  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS)
-    message("error: no psram");
+  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS) {
+    printf("Error: Cannot allocate PSRAM\n");
+    return;
+  }
 
   //save original screen contents
   blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_saved);
 
   snd_mute();
   sd_init();
+  //if (!sd_init())
+  //  message(str_err_sd_mount, true, 1000, fb_saved);
 
   // TODO: fixme
   emulator_state.show_bat = true;
   emulator_state.show_fps = true;
 
   while (1) {
-    main_choice = selection_menu((char*) main_menu_items, 1, fb_saved);
+    main_choice = selection_menu((char*) main_menu_items, true, false, fb_saved);
     switch (main_choice) {
       case 0:
         if (Memory.ROM) {
@@ -1432,45 +1428,81 @@ void emumgr_menu(gbuffer_t fb) {
             S9xReset();
           
             if (!LoadROM(NULL))
-              message("error loading rom");
+              message(str_err_rom, true, 1000, fb_saved);
           }
       
           goto leave;
         } else {
-          message("choose rom first");
+              message(str_load_game_first, true, 1000, fb_saved);
         }
         
         break;
       case 1:
-        sub_choice = selection_menu((char*) save_menu_items, 1, fb_saved);
+        if (!Memory.ROM) {
+          message(str_load_game_first, true, 1000, fb_saved);
+          break;
+        }
+        sub_choice = selection_menu((char*) load_menu_items, true, false, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 5)) {
+          if (!sd_init()) {
+            message(str_err_sd_mount, true, 1000, fb_saved);
+            break;
+          }
+
           strcpy(filename,  SAVESTATE_DIRECTORY);
           strcat(filename, Memory.ROMName);
           char slot_num[3];
           itoa(sub_choice + 1, slot_num, 10);
           strcat(filename, slot_num);
-          if (!load_state_handler(filename))
-            goto leave;
-
+          switch (load_state_handler(filename)) {
+            case SUCCESS:
+              goto leave;
+            case ERR_SD_OPEN_FIL:
+              sd_deinit();
+              message(str_err_open_file, true, 1000, fb_saved);
+              break;
+            case ERR_SD_READING:
+              sd_deinit();
+              message(str_err_read_file, true, 1000, fb_saved);
+              break;
+            default:
+              break;
+          }
         }          
         break;
       case 2:
-        sub_choice = selection_menu((char*) save_menu_items, 1, fb_saved);
+        if (!Memory.ROM) {
+          message(str_load_game_first, true, 1000, fb_saved);
+          break;
+        }
+        sub_choice = selection_menu((char*) save_menu_items, true, false, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 5)) {
           strcpy(filename,  SAVESTATE_DIRECTORY);
           strcat(filename, Memory.ROMName);
           char slot_num[3];
           itoa(sub_choice + 1, slot_num, 10);
           strcat(filename, slot_num);
-          
-          int a = save_state_handler(filename);
-          if (!a)
-            printf("successfully saved.\n");
-          else
-            printf("error saving: %d\n", a);
-
-
-          goto leave;
+          if (!sd_init()) {
+            message(str_err_sd_mount, true, 1000, fb_saved);
+            break;
+          }
+                    
+          switch (save_state_handler(filename)) {
+            case SUCCESS:
+              sd_deinit();
+              message(str_gamestate_saved, true, 1000, fb_saved);
+              goto leave;
+            case ERR_SD_OPEN_FIL:
+              sd_deinit();
+              message(str_err_open_file, true, 1000, fb_saved);
+              break;
+            case ERR_SD_WRITING:
+              sd_deinit();
+              message(str_err_write_file, true, 1000, fb_saved);
+              break;
+            default:
+              break;
+          }
         }
           
         break;
@@ -1486,24 +1518,42 @@ void emumgr_menu(gbuffer_t fb) {
           emulator_state.brightness = sub_choice;
         break;
       case 5:
+        if (!sd_init()) {
+          message(str_err_sd_mount, true, 1000, fb_saved);
+          break;
+        }
+
         res = menu_loadfile(fb_saved);
         switch (res) {
-          case 0:
+          case SUCCESS:
             printf("starting emulation\n");
             goto leave;
-          case -1:
+/*
+          case ERR_ABORTED:
+            message(str_err_aborted, true, 1000, fb_saved);
             printf("aborted by user\n");
             break;
-          case -2:
+*/
+          case ERR_PSRAM:
             printf("no psram\n");
             break;
-          case -3:
+          case ERR_SD_OPEN_DIR:
+            sd_deinit();
+            message(str_err_open_dir, true, 1000, fb_saved);
             printf("cannot read dir\n");
             break;
-          case -4:
+          case ERR_SD_OPEN_FIL:
+            sd_deinit();
+            message(str_err_open_file, true, 1000, fb_saved);
+            printf("cannot open file\n");
+            break;
+          case ERR_LOAD_ROM:
+            message(str_err_rom, true, 1000, fb_saved);
             printf("error reading file\n");
             break;
-          case -5:
+          case ERR_SD_READING:
+            sd_deinit();
+            message(str_err_read_file, true, 1000, fb_saved);
             printf("error loading rom\n");
             break;
           default:

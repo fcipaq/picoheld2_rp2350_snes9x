@@ -290,7 +290,7 @@ void setup(void) {
   emulator_state.brightness = 20;
 
   lcd_backlight_init();
-  lcd_backlight_set(emulator_state.brightness);
+  lcd_backlight_set(0);
 
   printf("trying to get some PSRAM\n");
   uint16_t* test  = (uint16_t*) sfe_mem_malloc(1024);
@@ -310,6 +310,21 @@ void print_memory_usage() {
     printf("Total free: %d bytes\n", info.fordblks);
     printf("Total heap size: %d bytes\n", info.arena);
     printf("Largest free block: %d bytes\n", info.ordblks);
+}
+
+void bl_fade_in() {
+#define BL_FADE_STEPS (50)
+  float delta = (float) emulator_state.brightness / (float) BL_FADE_STEPS;
+  float value = 0;
+
+  for (int i = 0; i < BL_FADE_STEPS; i++) {
+    lcd_backlight_set((int) value);
+    value += delta;
+    sleep_ms(5);
+  }
+
+  lcd_backlight_set((int) emulator_state.brightness);
+
 }
 
 int main(void)
@@ -355,6 +370,8 @@ int main(void)
   Memory.ROM = (uint8_t*) ROM_DATA;
   Memory.ROM_Size = ROM_SIZE;
 #endif
+
+  bl_fade_in();
 
   emumgr_menu(fb_back);
 
