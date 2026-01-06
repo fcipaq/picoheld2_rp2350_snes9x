@@ -47,7 +47,7 @@
 #define STR_PRESS_LEFT "Nach LINKS dr\xfc""cken"
 #define STR_RETURN "zum Abbrechen"
 #define STR_LOADING "Laden..."
-#define STR_GO_BACK "Zur\xfc""ck"
+#define STR_GO_BACK "\x3c""  Zur\xfc""ck"
 
 #define STR_OFF "Aus"
 #define STR_YES "JA"

@@ -406,13 +406,6 @@ int main(void)
     while (1) {
       ctrl_button_state_update();
 
-      watchdog_disable();
-      
-      if (ctrl_is_pressed(BUTTON_SW))
-        emumgr_menu(fb_back);
-      
-      watchdog_enable(1000, true);
-      watchdog_update(); 
 /*
       if (ctrl_is_pressed(BUTTON_L)) {
         manual_framedrop = 1;
@@ -438,6 +431,16 @@ int main(void)
       }
 
       S9xMainLoop();
+
+      watchdog_disable();
+      if (ctrl_is_pressed(BUTTON_SW)) {
+        emumgr_menu(fb_back);
+        framedrop_balance = 0;
+        fps_timer = millis();
+        startTime = micros();
+      }      
+      watchdog_enable(1000, true);
+      watchdog_update(); 
 
 #ifdef AUDIO_ENABLE
       mutex_exit(&audio_generate);

@@ -77,7 +77,7 @@ void* psram_rom;
 int translucency = 50;
 
 // starfield
-#define NUM_STARS (100)
+#define NUM_STARS (50)
 uint8_t* stars_x;
 uint8_t* stars_y;
 uint8_t* stars_color;
@@ -103,12 +103,9 @@ int supply_type_last = -1;
 #define MENU_REPEAT_START (500)
 #define MENU_REPEAT_DELAY (100)
 
-#define MENU_OFFSET_X (30)  // aobsolete
-
 #define MENU_MIN_X_CLEAR (40)
 #define MENU_MIN_Y_CLEAR (20)
 
-#define MENU_MAX_ITEMS (100)
 #define MENU_MAX_DIR_ITEMS (100)
 #define DIRECTORY_BUFFER_SIZE (MENU_MAX_DIR_ITEMS * (256 + 4))
 
@@ -121,12 +118,10 @@ int supply_type_last = -1;
 #define RM_ERR_READING_ROM -3
 #define RM_ERR_FLASHING_ROM -4
 
-#define SELECTION_DELAY 200
-#define SELECTION_DELAY_ROMLIST 10
-
 #define MENU_LST "\xff"
 
 const char nullstring = 0;
+const char terminatorstring = 255;
 
 const char* confirm_menu_items_overwrite[] = { STR_CONFIRM_OVERWRITE,
                                                STR_YES,
@@ -244,21 +239,21 @@ void stars_draw(gbuffer_t fb) {
   color_t stars_color;
   color_t col[3];
   col[0] = rgb_col_888_565(100, 100, 100);
-  col[1] = rgb_col_888_565(150, 150, 150);
-  col[2] = rgb_col_888_565(200, 200, 200);
+  col[1] = rgb_col_888_565(175, 175, 175);
+  col[2] = rgb_col_888_565(255, 255, 255);
 
   uint16_t* gbuf = (uint16_t*) gbuf_get_dat_ptr(fb);
   int width = gbuf_get_width(fb);
 
   for (int i = 0; i < NUM_STARS; i++) {
       switch (stars_speed[i]) {
-        case 0:
+        case 1:
           stars_color = col[0];
           break;
-        case 1:
+        case 2:
           stars_color = col[1];
           break;
-        case 2:
+        case 3:
           stars_color = col[2];
           break;
       }
@@ -710,10 +705,10 @@ int get_item_cnt(char* buffer) {
 
     while (1) {
       pos++;
-      if (buffer[pos] == 0) {
+      if (buffer[pos] == nullstring) {
         break;
       }
-      if (buffer[pos] == 255)
+      if (buffer[pos] == terminatorstring)
         return cur_entry;
     }
 
@@ -749,9 +744,40 @@ int get_directory(char *path, char* buffer) {
         return -1;
     }
 
-    buffer[buf_pos] = 255;  // MENU_LST
-
+    buffer[buf_pos] = terminatorstring;
     return 0;
+}
+
+int draw_rectangle(coord_t x, coord_t y, coord_t width, coord_t height, int translucency, gbuffer_t fb) {
+  gbuffer_t fb_tmp;
+
+  if (gbuf_create(&fb_tmp, width, height, (void*) sfe_mem_malloc(width * height * 2)) != BUF_SUCCESS) {
+    message("error: no psram"); 
+    return -1;
+  }
+
+  draw_rect_fill(0,
+                 0,
+                 width - 1,
+                 height - 1,
+                 0x2124,
+                 fb_tmp);
+  
+  draw_line(gbuf_get_width(corner_top_left), 0, width - gbuf_get_width(corner_top_left) - 1, 0, 0xa514, fb_tmp);
+  draw_line(0, gbuf_get_height(corner_top_left), 0, height - gbuf_get_height(corner_bottom_left), 0xa514, fb_tmp);
+  draw_line(width - 1, gbuf_get_height(corner_top_left), width - 1, height - gbuf_get_height(corner_bottom_left), 0x0000, fb_tmp);
+  draw_line(gbuf_get_width(corner_top_left), height - 1, width - gbuf_get_width(corner_top_left) - 1, height - 1, 0x0000, fb_tmp);
+
+  blit_buf(0, 0, BLIT_NO_ALPHA, corner_top_left, fb_tmp);
+  blit_buf(0, height - gbuf_get_height(corner_bottom_left), BLIT_NO_ALPHA, corner_bottom_left, fb_tmp);
+  blit_buf(width - gbuf_get_width(corner_top_right), 0, BLIT_NO_ALPHA, corner_top_right, fb_tmp);
+  blit_buf(width - gbuf_get_width(corner_bottom_right), height - gbuf_get_height(corner_bottom_right), BLIT_NO_ALPHA, corner_bottom_right, fb_tmp);
+  
+  blit_buf_blend(x, y, 0xf81f, translucency, fb_tmp, fb);
+  
+  sfe_mem_free(gbuf_get_dat_ptr(fb_tmp));
+  return 0;
+
 }
 
 int progress_bar(char* caption, int value, gbuffer_t fb) {
@@ -764,17 +790,29 @@ int progress_bar(char* caption, int value, gbuffer_t fb) {
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
   color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
 
-  int menu_border_width = 12;
-
   font_t* menu_font = (font_t*) MENU_FONT;
-  int menu_offset_x = (gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2 + menu_border_width;
+
+  int menu_border_width = gbuf_get_width(corner_top_left);
+  int menu_border_height = gbuf_get_height(corner_top_left);
+
+  int menu_offset_x = 30;
+
   int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
-  
+  int bar_height = 10;
+  int menu_height = font_get_height(menu_font) + bar_height + 20;
+
+  int menu_offset_y = (gbuf_get_height(fb) - menu_height) / 2;
+
   blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
   if (menu_first_run)
     stars_draw(fb_back);
 
-  blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_small)) / 2, 0xf81f, translucency, rect_image_small, fb_back);
+  draw_rectangle(menu_offset_x - menu_border_width,
+                  menu_offset_y - menu_border_height,
+                  menu_width + menu_border_width * 2,
+                  menu_height + menu_border_height * 2,
+                  translucency,
+                  fb_back);
 
   font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, caption, menu_font, fb_back);
   font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, caption, menu_font, fb_back);
@@ -793,6 +831,7 @@ int progress_bar(char* caption, int value, gbuffer_t fb) {
   blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_left_full_image, fb_back);
   blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_full_image, fb_back);
 
+  draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
   lcd.request_pageflip();
 
   return 0;
@@ -807,12 +846,16 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
 
   font_t* menu_font = (font_t*) MENU_FONT;
 
-  int menu_border_width = 12;
-  int menu_offset_x = (gbuf_get_width(fb) - gbuf_get_width(rect_image_small)) / 2 + menu_border_width;
+  int menu_border_width = gbuf_get_width(corner_top_left);
+  int menu_border_height = gbuf_get_height(corner_top_left);
+
+  int menu_offset_x = 30;
 
   int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
   int bar_height = 10;
-  int menu_height = font_get_height(menu_font) + bar_height;
+  int menu_height = font_get_height(menu_font) + bar_height + 20;
+
+  int menu_offset_y = (gbuf_get_height(fb) - menu_height) / 2;
 
   int b_debounce = 0;
   int b_debounce_timer = 0;
@@ -883,7 +926,12 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
       }
     }
 
-    blit_buf_blend((gbuf_get_width(fb_back) - gbuf_get_width(rect_image_small)) / 2, (gbuf_get_height(fb_back) - gbuf_get_height(rect_image_small)) / 2, 0xf81f, translucency, rect_image_small, fb_back);
+    draw_rectangle(menu_offset_x - menu_border_width,
+                   menu_offset_y - menu_border_height,
+                   menu_width + menu_border_width * 2,
+                   menu_height + menu_border_height * 2,
+                   translucency,
+                   fb_back);
 
     font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, caption, menu_font, fb_back);
     font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, caption, menu_font, fb_back);
@@ -903,41 +951,9 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
     blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_left_full_image, fb_back);
     blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_full_image, fb_back);
 
+    draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
     lcd.request_pageflip();
   }
-
-}
-
-int draw_rectangle(coord_t x, coord_t y, coord_t width, coord_t height, int translucency, gbuffer_t fb) {
-  //jumpy
-  gbuffer_t fb_tmp;
-
-  if (gbuf_create(&fb_tmp, width, height, (void*) sfe_mem_malloc(width * height * 2)) != BUF_SUCCESS) {
-    message("error: no psram"); 
-    return -1;
-  }
-
-  draw_rect_fill(0,
-                 0,
-                 width - 1,
-                 height - 1,
-                 0x2124,
-                 fb_tmp);
-  
-  draw_line(gbuf_get_width(corner_top_left), 0, width - gbuf_get_width(corner_top_left) - 1, 0, 0xa514, fb_tmp);
-  draw_line(0, gbuf_get_height(corner_top_left), 0, height - gbuf_get_height(corner_bottom_left), 0xa514, fb_tmp);
-  draw_line(width - 1, gbuf_get_height(corner_top_left), width - 1, height - gbuf_get_height(corner_bottom_left), 0x0000, fb_tmp);
-  draw_line(gbuf_get_width(corner_top_left), height - 1, width - gbuf_get_width(corner_top_left) - 1, height - 1, 0x0000, fb_tmp);
-
-  blit_buf(0, 0, BLIT_NO_ALPHA, corner_top_left, fb_tmp);
-  blit_buf(0, height - gbuf_get_height(corner_bottom_left), BLIT_NO_ALPHA, corner_bottom_left, fb_tmp);
-  blit_buf(width - gbuf_get_width(corner_top_right), 0, BLIT_NO_ALPHA, corner_top_right, fb_tmp);
-  blit_buf(width - gbuf_get_width(corner_bottom_right), height - gbuf_get_height(corner_bottom_right), BLIT_NO_ALPHA, corner_bottom_right, fb_tmp);
-  
-  blit_buf_blend(x, y, 0xf81f, translucency, fb_tmp, fb);
-  
-  sfe_mem_free(gbuf_get_dat_ptr(fb_tmp));
-  return 0;
 
 }
 
@@ -954,21 +970,25 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
   int menu_items_clearance_y = 5;
   int num_itms = get_item_cnt(item_list) - 1;  // minus the caption
 
-  int menu_border_width = 12;
-  int menu_border_height = 12;
+  int menu_border_width = gbuf_get_width(corner_top_left);
+  int menu_border_height =  gbuf_get_height(corner_top_left);
   int menu_scrollbar_width = 3 + gbuf_get_width(bar_up_full_image);
 
-  int menu_height = menu_caption_offset - menu_items_clearance_y;  // difference for clearance of caption
+  // calculate menu height (depending on items to be shown)
+  int menu_height = menu_caption_offset * menu_items_clearance_y - menu_items_clearance_y;  // difference for clearance of caption
   for (int i = 0; i < get_item_cnt(item_list); i++) {
     menu_height += font_get_height(menu_font) + menu_items_clearance_y;
     if (menu_height > (gbuf_get_height(fb) - MENU_MIN_Y_CLEAR * 2 - menu_border_height * 2)) {
-      menu_height = gbuf_get_height(fb) - MENU_MIN_Y_CLEAR * 2 - menu_border_height * 2;
+      menu_height -= font_get_height(menu_font) + menu_items_clearance_y;
       break;
     }
   }
 
   int max_vis_items = (menu_height - font_get_height(menu_font) - menu_caption_offset) / (font_get_height(menu_font) + menu_items_clearance_y);
 
+  menu_height -= menu_items_clearance_y;
+
+  // calculate menu width (depending on item width)
   int menu_width = 0;
   if (max_vis_items < num_itms)
     menu_width = menu_scrollbar_width * 2;
@@ -1020,8 +1040,14 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
     // caption
     font_write_string_centered(1 + menu_offset_x + menu_width / 2, 1 + menu_offset_y, menu_font_shadow_color, get_item(0, item_list), menu_font, fb_back);
     font_write_string_centered(menu_offset_x + menu_width / 2, menu_offset_y, menu_font_caption_color, get_item(0, item_list), menu_font, fb_back);
-
-    //draw_rect_fill(0, 0, menu_width - 1, menu_height - 1, 0xf81f, fb_back);
+    /*
+    draw_line(menu_offset_x + menu_width / 2 - font_get_string_width(get_item(0, item_list), menu_font) / 4,
+              menu_offset_y + font_get_height(menu_font) + menu_caption_offset * menu_items_clearance_y / 2,
+              menu_offset_x + menu_width / 2 + font_get_string_width(get_item(0, item_list), menu_font) / 4,
+              menu_offset_y + font_get_height(menu_font) + menu_caption_offset * menu_items_clearance_y / 2,
+              rgb_col_888_565(100, 100, 100),
+              fb_back);
+    */
 
     for (int i = 0; i < max_vis_items; i++) {
       
@@ -1129,7 +1155,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
 
     // scroll arrows to indicate additional items
     int scrl_up_arrow_y = menu_offset_y + menu_caption_offset * (font_get_height(menu_font) + menu_items_clearance_y);
-    int scrl_down_arrow_y = menu_offset_y + menu_height - 10;
+    int scrl_down_arrow_y = menu_offset_y + menu_height - gbuf_get_height(bar_down_empty_image);;
 
     int total_range_y = scrl_down_arrow_y - scrl_up_arrow_y - gbuf_get_height(bar_up_full_image);
     float scrl_pcnt =  (float) ofs_itm / (float) (num_itms - max_vis_items);
@@ -1226,6 +1252,7 @@ int selection_menu(char* item_list, bool centered, gbuffer_t fb) {
       }
     }
 
+    draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
     lcd.request_pageflip();
   }
 
@@ -1300,7 +1327,6 @@ int copy_rom_to_flash(gbuffer_t fb) {
 
 }
 
-
 int menu_loadfile(gbuffer_t fb) {
   char* buffer;
   int res = 0;
@@ -1311,10 +1337,20 @@ int menu_loadfile(gbuffer_t fb) {
   if (!buffer)
     return -2; // no free psram
 
-  strcpy(buffer, "Select file");
-
-  res = get_directory(ROM_DIRECTORY, &buffer[strlen(buffer) + 1]);
+  // add go back at top of list
+  int pos = 0;
+  strcpy(buffer, STR_SEL_ROM);
+  pos = strlen(buffer) + 1;
+  strcpy(&buffer[pos], STR_GO_BACK);
+  pos += strlen(&buffer[pos]);
   
+  res = get_directory(ROM_DIRECTORY, &buffer[pos + 1]);
+
+  // add go back at bottom of list
+  char* buf_tmp = get_item(get_item_cnt(buffer) - 1, buffer);
+  strcpy(&buf_tmp[strlen(buf_tmp) + 1], STR_GO_BACK);
+  buf_tmp[strlen(buf_tmp) + 1 + strlen(STR_GO_BACK) + 2] = terminatorstring;
+
   if (res != 0) {
     ret = -3;  // cannot read dir
     goto bailout;
@@ -1322,7 +1358,7 @@ int menu_loadfile(gbuffer_t fb) {
 
   res = selection_menu((char*) buffer, 0, fb);
 
-  if (res == -1) {
+  if ((res == 0) || (res == (get_item_cnt(buffer) - 1))) {
     ret = -1;  // aborted by user
     goto bailout;
   }
