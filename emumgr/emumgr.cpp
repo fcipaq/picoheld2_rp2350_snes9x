@@ -40,7 +40,6 @@
 #include "../assets/rect.h"
 #include "../assets/scroll_bar.h"
 #include "../assets/battery.h"
-//#include <fonts/fontfiles/pixelmix_14_16.h>
 #include <fonts/fontfiles/picoheld_pixel_6x7.h>
 
 extern "C" {
@@ -65,7 +64,7 @@ uint32_t millis();
 uint32_t micros();
 int progress_bar(const char* caption, int value, gbuffer_t fb);
 void message(const char* item_list, bool centered, uint32_t delay, gbuffer_t fb);
-int selection_menu(char* item_list, bool centered, bool no_highlight, gbuffer_t fb);
+int selection_menu(char* item_list, bool centered, bool no_highlight, int delay, gbuffer_t fb);
 
 /* ====================================================== variables ====================================================== */
 // misc
@@ -93,8 +92,6 @@ int supply_type_last = -1;
 /* ====================================================== end variables ====================================================== */
 
 #define MENU_FONT picoheld_pixel_6x7
-//#define MENU_FONT font_13x16
-//#define MENU_FONT font_8x11
 
 #define MENU_FONT_SHADOW_COLOR rgb_col_888_565(30, 30, 30)
 #define MENU_FONT_SELECTED_COLOR rgb_col_888_565(230, 0, 200)
@@ -108,7 +105,13 @@ int supply_type_last = -1;
 #define MENU_MIN_Y_CLEAR (20)
 
 #define MENU_MAX_DIR_ITEMS (100)
+
+#define MESSAGE_DELAY_SHORT (2000)
+
 #define DIRECTORY_BUFFER_SIZE (MENU_MAX_DIR_ITEMS * (256 + 4))
+
+#define DRAW_BATTERY_X (219)
+#define DRAW_BATTERY_Y (5)
 
 #define SAVESTATE_DIRECTORY "/roms/snes/save/"
 #define ROM_DIRECTORY "/roms/snes/"
@@ -131,7 +134,8 @@ const char terminatorstring = 255;
 const char str_gamestate_saved[] = { STR_GAMESTATE_SAVED"\0"\
                                      MENU_LST };
 
-const char str_err_sd_mount[] = { STR_ERR_SD_MOUNT"\0"\
+const char str_err_sd_mount[] = { STR_ERROR"\0"\
+                                  STR_ERR_SD_MOUNT"\0"\
                                   MENU_LST };
 
 const char str_err_aborted[] = { STR_ERR_ABORTED"\0"\
@@ -306,7 +310,7 @@ void draw_battery(int x, int y, int percent, gbuffer_t fb_back) {
 }
 
 void message(const char* item_list, bool centered, uint32_t delay, gbuffer_t fb) {
-  selection_menu((char*) item_list, centered, true, fb);
+  selection_menu((char*) item_list, centered, true, delay, fb);
 };
 
 int sd_deinit() {
@@ -825,7 +829,7 @@ int progress_bar(const char* caption, int value, gbuffer_t fb) {
   blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_left_full_image, fb_back);
   blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_full_image, fb_back);
 
-  draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
+  draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
   lcd.request_pageflip();
 
   return 0;
@@ -843,7 +847,7 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
   int menu_border_width = gbuf_get_width(corner_top_left);
   int menu_border_height = gbuf_get_height(corner_top_left);
 
-  int menu_offset_x = 30;
+  int menu_offset_x = 50;
 
   int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
   int bar_height = 10;
@@ -930,7 +934,6 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
     font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
     font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, (char*) caption, menu_font, fb_back);
 
-    //draw_rect_fill(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, menu_offset_x + 10 + (menu_width - 20) * value / 100, gbuf_get_height(fb_back) / 2 + 10, 0xffff, fb_back);
     int bar_start = menu_offset_x + 10 + gbuf_get_width(bar_left_full_image);
     int bar_end = menu_offset_x + 10 + menu_width - 20 - gbuf_get_width(bar_right_full_image);
     
@@ -945,13 +948,13 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
     blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_left_full_image, fb_back);
     blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_full_image, fb_back);
 
-    draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
+    draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
     lcd.request_pageflip();
   }
 
 }
 
-int selection_menu(char* item_list, bool centered, bool no_highlight, gbuffer_t fb) {
+int selection_menu(char* item_list, bool centered, bool no_highlight, int delay, gbuffer_t fb) {
   gbuffer_t fb_back;
 
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
@@ -1018,7 +1021,10 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, gbuffer_t 
   int h_font_scrl_dir = 1;
   uint32_t h_font_scrl_delay = 1000;
 
-  while (1) {
+  bool timed = delay ? true : false;
+  uint32_t timer = millis();
+
+  while (!timed || (millis() - timer < delay) ) {
     lcd.get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
     if (menu_first_run)
@@ -1246,7 +1252,7 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, gbuffer_t 
       }
     }
 
-    draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
+    draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
     lcd.request_pageflip();
   }
 
@@ -1350,7 +1356,7 @@ int menu_loadfile(gbuffer_t fb) {
   strcpy(&buf_tmp[strlen(buf_tmp) + 1], str_go_back);
   buf_tmp[strlen(buf_tmp) + 1 + strlen(str_go_back) + 2] = terminatorstring;
 
-  res = selection_menu((char*) buffer, false, false, fb);
+  res = selection_menu((char*) buffer, false, false, 0, fb);
   if ((res == 0) || (res == (get_item_cnt(buffer) - 1))) {
     ret = ERR_ABORTED;
     goto bailout;
@@ -1420,7 +1426,7 @@ void emumgr_menu(gbuffer_t fb) {
   emulator_state.show_fps = true;
 
   while (1) {
-    main_choice = selection_menu((char*) main_menu_items, true, false, fb_saved);
+    main_choice = selection_menu((char*) main_menu_items, true, false, 0, fb_saved);
     switch (main_choice) {
       case 0:
         if (Memory.ROM) {
@@ -1428,24 +1434,24 @@ void emumgr_menu(gbuffer_t fb) {
             S9xReset();
           
             if (!LoadROM(NULL))
-              message(str_err_rom, true, 1000, fb_saved);
+              message(str_err_rom, true, 0, fb_saved);
           }
       
           goto leave;
         } else {
-              message(str_load_game_first, true, 1000, fb_saved);
+              message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
         }
         
         break;
       case 1:
         if (!Memory.ROM) {
-          message(str_load_game_first, true, 1000, fb_saved);
+          message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
           break;
         }
-        sub_choice = selection_menu((char*) load_menu_items, true, false, fb_saved);
+        sub_choice = selection_menu((char*) load_menu_items, true, false, 0, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 5)) {
           if (!sd_init()) {
-            message(str_err_sd_mount, true, 1000, fb_saved);
+            message(str_err_sd_mount, true, 0, fb_saved);
             break;
           }
 
@@ -1459,11 +1465,11 @@ void emumgr_menu(gbuffer_t fb) {
               goto leave;
             case ERR_SD_OPEN_FIL:
               sd_deinit();
-              message(str_err_open_file, true, 1000, fb_saved);
+              message(str_err_open_file, true, 0, fb_saved);
               break;
             case ERR_SD_READING:
               sd_deinit();
-              message(str_err_read_file, true, 1000, fb_saved);
+              message(str_err_read_file, true, 0, fb_saved);
               break;
             default:
               break;
@@ -1472,10 +1478,10 @@ void emumgr_menu(gbuffer_t fb) {
         break;
       case 2:
         if (!Memory.ROM) {
-          message(str_load_game_first, true, 1000, fb_saved);
+          message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
           break;
         }
-        sub_choice = selection_menu((char*) save_menu_items, true, false, fb_saved);
+        sub_choice = selection_menu((char*) save_menu_items, true, false, 0, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 5)) {
           strcpy(filename,  SAVESTATE_DIRECTORY);
           strcat(filename, Memory.ROMName);
@@ -1483,22 +1489,22 @@ void emumgr_menu(gbuffer_t fb) {
           itoa(sub_choice + 1, slot_num, 10);
           strcat(filename, slot_num);
           if (!sd_init()) {
-            message(str_err_sd_mount, true, 1000, fb_saved);
+            message(str_err_sd_mount, true, 0, fb_saved);
             break;
           }
-                    
+
           switch (save_state_handler(filename)) {
             case SUCCESS:
               sd_deinit();
-              message(str_gamestate_saved, true, 1000, fb_saved);
+              message(str_gamestate_saved, true, MESSAGE_DELAY_SHORT, fb_saved);
               goto leave;
             case ERR_SD_OPEN_FIL:
               sd_deinit();
-              message(str_err_open_file, true, 1000, fb_saved);
+              message(str_err_open_file, true, 0, fb_saved);
               break;
             case ERR_SD_WRITING:
               sd_deinit();
-              message(str_err_write_file, true, 1000, fb_saved);
+              message(str_err_write_file, true, 0, fb_saved);
               break;
             default:
               break;
@@ -1519,7 +1525,7 @@ void emumgr_menu(gbuffer_t fb) {
         break;
       case 5:
         if (!sd_init()) {
-          message(str_err_sd_mount, true, 1000, fb_saved);
+          message(str_err_sd_mount, true, 0, fb_saved);
           break;
         }
 
@@ -1539,21 +1545,21 @@ void emumgr_menu(gbuffer_t fb) {
             break;
           case ERR_SD_OPEN_DIR:
             sd_deinit();
-            message(str_err_open_dir, true, 1000, fb_saved);
+            message(str_err_open_dir, true, 0, fb_saved);
             printf("cannot read dir\n");
             break;
           case ERR_SD_OPEN_FIL:
             sd_deinit();
-            message(str_err_open_file, true, 1000, fb_saved);
+            message(str_err_open_file, true, 0, fb_saved);
             printf("cannot open file\n");
             break;
           case ERR_LOAD_ROM:
-            message(str_err_rom, true, 1000, fb_saved);
+            message(str_err_rom, true, 0, fb_saved);
             printf("error reading file\n");
             break;
           case ERR_SD_READING:
             sd_deinit();
-            message(str_err_read_file, true, 1000, fb_saved);
+            message(str_err_read_file, true, 0, fb_saved);
             printf("error loading rom\n");
             break;
           default:
