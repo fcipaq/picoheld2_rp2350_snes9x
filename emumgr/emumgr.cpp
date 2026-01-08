@@ -1466,23 +1466,32 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
                   0xf81f,
                   thumbnail, fb_back);  
       } else {
+        /*
         draw_rect_fill(menu_offset_x + menu_width / 2 - SNES_WIDTH / 4,
                        menu_offset_y + font_get_height(menu_font) + clearance_y,
-                       menu_offset_x + menu_width / 2 - SNES_WIDTH / 4  + SNES_WIDTH / 2,
-                       menu_offset_y + font_get_height(menu_font) + clearance_y  + SNES_HEIGHT / 2,
+                       menu_offset_x + menu_width / 2 - SNES_WIDTH / 4  + SNES_WIDTH / 2 - 1,
+                       menu_offset_y + font_get_height(menu_font) + clearance_y  + SNES_HEIGHT / 2 - 1,
                        0xf81f,
                        fb_back);
+        */
       }
+
+      blit_buf_blend(menu_offset_x + menu_width / 2 - gbuf_get_width(dot_image) / 2,
+                     menu_offset_y + font_get_height(menu_font) + font_get_height(menu_font) / 2 + clearance_y + SNES_HEIGHT / 4 - gbuf_get_height(dot_image) / 2 ,
+                     0xf81f,
+                     80,
+                     dot_image,
+                     fb_back);       
 
       char debug_print[3];
       itoa(cur_itm + 1, debug_print, 10);    
-      font_write_string_centered(menu_offset_x + menu_width / 2 + 1,
+      font_write_string(menu_offset_x + menu_width / 2 - font_get_string_width(debug_print, menu_font) / 2 + 1,
                                  menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4 + 1,
                                  menu_font_shadow_color,
                                  debug_print,
                                  menu_font,
                                  fb_back);
-      font_write_string_centered(menu_offset_x + menu_width / 2,
+      font_write_string(menu_offset_x + menu_width / 2 - font_get_string_width(debug_print, menu_font) / 2,
                                  menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4,
                                  menu_font_caption_color,
                                  debug_print,
@@ -1776,13 +1785,12 @@ void emumgr_menu(gbuffer_t fb) {
           message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
           break;
         }
+        if (!sd_init()) {
+          message(str_err_sd_mount, true, 0, fb_saved);
+          break;
+        }
         sub_choice = savestate_selector(load_menu, filename, fb_saved);
         if ((sub_choice >= 0) && (sub_choice < MAX_NUM_SAVESTATES)) {
-          if (!sd_init()) {
-            message(str_err_sd_mount, true, 0, fb_saved);
-            break;
-          }
-
           strcpy(filename,  SAVESTATE_DIRECTORY);
           strcat(filename, Memory.ROMName);
           char slot_num[3];
@@ -1809,6 +1817,10 @@ void emumgr_menu(gbuffer_t fb) {
           message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
           break;
         }
+        if (!sd_init()) {
+          message(str_err_sd_mount, true, 0, fb_saved);
+          break;
+        }
         sub_choice = savestate_selector(save_menu, filename, fb_saved);
         //selection_menu((char*) save_menu_items, true, false, 0, fb_saved);
         if ((sub_choice >= 0) && (sub_choice < MAX_NUM_SAVESTATES)) {
@@ -1817,10 +1829,6 @@ void emumgr_menu(gbuffer_t fb) {
           char slot_num[3];
           itoa(sub_choice + 1, slot_num, 10);
           strcat(filename, slot_num);
-          if (!sd_init()) {
-            message(str_err_sd_mount, true, 0, fb_saved);
-            break;
-          }
 
           switch (save_state_handler(filename)) {
             case SUCCESS:
