@@ -59,13 +59,21 @@ extern "C" {
 #include "sparkfun_pico/sfe_pico.h"
 }
 
+#include <utility>  // debug printf
+
 #define FLASH_ROM_ADDRESS (0x500000)
+
+#define DEBUG_OUTPUT
+
+template<typename... Args>
+void em_printf(const char* format, Args&&... args) {
+#ifdef DEBUG_OUTPUT
+  std::printf(format, std::forward<Args>(args)...);
+#endif
+}
 
 uint32_t millis();
 uint32_t micros();
-int progress_bar(const char* caption, int value, gbuffer_t fb);
-void message(const char* item_list, bool centered, uint32_t delay, gbuffer_t fb);
-int selection_menu(char* item_list, bool centered, bool no_highlight, int delay, gbuffer_t fb);
 
 /* ====================================================== variables ====================================================== */
 // misc
@@ -184,6 +192,8 @@ const char* bri_menu = STR_BRIGHTNESS;
 
 const char* snd_menu = STR_SOUND;
 
+const char* rom_directory = ROM_DIRECTORY;
+
 const char* str_sel_rom = STR_SEL_ROM;
 
 const char str_loading[] = {  STR_LOADING"\0"\
@@ -206,7 +216,7 @@ int stars_init() {
     stars_color = (uint8_t*) sfe_mem_malloc(NUM_STARS);
 
     if (!stars_x || !stars_y || !stars_color || !stars_speed) {
-      printf("Error: Cannot allocate PSRAM\n");
+      em_printf("Error: Cannot allocate PSRAM\n");
       return ERR_UNSPEC;
     }
 
@@ -262,7 +272,7 @@ void draw_battery(int x, int y, int percent, gbuffer_t fb_back) {
 
     if (gbuf_get_dat_ptr(draw_battery_gbuf) == NULL) {
       if (gbuf_create(&draw_battery_gbuf, gbuf_get_width(battery_normal_image), gbuf_get_height(battery_normal_image), (void*) sfe_mem_malloc(gbuf_get_width(battery_normal_image) * gbuf_get_height(battery_normal_image) * 2)) != BUF_SUCCESS) {
-        printf("Error: Cannot allocate PSRAM\n");
+        em_printf("Error: Cannot allocate PSRAM\n");
         return;
       }       
     }
@@ -299,10 +309,6 @@ void draw_battery(int x, int y, int percent, gbuffer_t fb_back) {
     blit_buf_blend(x, y, 0xf81f, 40, draw_battery_gbuf, fb_back);
 
 }
-
-void message(const char* item_list, bool centered, uint32_t delay, gbuffer_t fb) {
-  selection_menu((char*) item_list, centered, true, delay, fb);
-};
 
 int sd_deinit() {
   if (!m_sd_init)
@@ -341,7 +347,7 @@ int sd_init() {
   bool spi_configured = pico_fatfs_set_config(&config);
 
   if (!spi_configured) {
-    printf("Cannot setup SPI for SD card.\n");
+    em_printf("Cannot setup SPI for SD card.\n");
     return false;
   }
 
@@ -351,7 +357,7 @@ int sd_init() {
     if (fr == FR_OK)
       break;
 
-    printf("Mounting failed: %d - retrying.\n", (int) fr);
+    em_printf("Mounting failed: %d - retrying.\n", (int) fr);
     pwr_sd_sply(0);
     sleep_ms(500);
     pwr_sd_sply(1);
@@ -362,7 +368,7 @@ int sd_init() {
   if (fr != FR_OK)
     return false;
 
-  printf("Mounting complete\n");
+  em_printf("Mounting complete\n");
 
   m_sd_init = true;
 
@@ -377,7 +383,7 @@ int read_image_to_gbuf(char* filename, gbuffer_t fb) {
   fr = f_open(&fil, filename, FA_READ);
 
   if (fr != FR_OK) {
-      printf("read_image_to_gbuf: open file (%s) failed: %d\n", filename, (int) fr);
+      em_printf("read_image_to_gbuf: open file (%s) failed: %d\n", filename, (int) fr);
       return ERR_SD_OPEN_FIL;
   }
 
@@ -392,7 +398,7 @@ int read_image_to_gbuf(char* filename, gbuffer_t fb) {
     unread_bytes -= br;
     pos += br;
     if ((fr != FR_OK) && unread_bytes) {
-      printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
+      em_printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
       ret = ERR_SD_READING;
       goto bailout;
     }    
@@ -406,70 +412,6 @@ int read_image_to_gbuf(char* filename, gbuffer_t fb) {
   
 }
 
-int load_rom_from_sd(char* filename, gbuffer_t fb) {
-  int ret = 0;
-  FIL fil;
-  FRESULT fr;
-
-  int step = 0;
-  int percent = 0; 
-
-  fr = f_open(&fil, filename, FA_READ);
-
-  if (fr != FR_OK) {
-      printf("open file failed: %d\n", (int) fr);
-      return ERR_SD_OPEN_FIL;
-  }
-  
-  printf("open complete\n");
-
-  if (psram_rom)
-    sfe_mem_free(psram_rom);
-
-  uint32_t filesize = f_size(&fil);
-  psram_rom = sfe_mem_malloc(filesize);
-  uint8_t* buf = (uint8_t*) psram_rom;
-  uint32_t unread_bytes = filesize;
-
-  if (!buf) {
-    printf("unable to get buffer (%d bytes).\n", filesize);
-    ret = ERR_PSRAM;
-    goto bailout;
-  }
-
-  printf("Got buffer (%d bytes).\n", filesize);
-
-  Memory.ROM = buf;
-  Memory.ROM_Size = filesize;
-
-  while (unread_bytes) {
-    UINT bytes_read;
-    fr = f_read (&fil, buf, 2048 /* read len */, &bytes_read);
-    buf += bytes_read;
-    unread_bytes -= bytes_read;
-    if ((fr != FR_OK) && unread_bytes) {
-      printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
-      ret = ERR_SD_READING;
-      goto bailout;
-    }
-    
-    percent = 100 - unread_bytes * 100 / filesize;
-    if (percent >= step) {
-      step += 5;  // smoothness
-      printf("Loading from SD: %d %\n", percent);
-      progress_bar(str_loading, percent, fb);
-    }
-  }
-
-  printf("successfully read %d bytes from file %s\n", (int) filesize, filename);
-  
-bailout:
-
-  f_close(&fil);
-  
-  return ret;
-}
-
 static bool screenshot_handler(const char *filename, int width, int height)
 {
     //return rg_display_save_frame(filename, currentUpdate, width, height);
@@ -480,7 +422,7 @@ int save_state_handler(char *filename)
 {
   int ret = SUCCESS;
 
-  printf("Savestate handler called: %s\n", filename);
+  em_printf("Savestate handler called: %s\n", filename);
 
   FIL fil;
   FRESULT fr;
@@ -488,7 +430,7 @@ int save_state_handler(char *filename)
   fr = f_open(&fil, filename, FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
 
   if (fr != FR_OK) {
-    printf("savestate handler: open file failed: %d\n", (int) fr);
+    em_printf("savestate handler: open file failed: %d\n", (int) fr);
     return ERR_SD_OPEN_FIL;  // error opening
   }
 
@@ -555,7 +497,7 @@ int save_state_handler(char *filename)
     goto bailout;
   }
 
-  printf("Game state saved.\n\n");
+  em_printf("Game state saved.\n\n");
 
   bailout:
   
@@ -568,7 +510,7 @@ int screenshot_saver(char *filename, gbuffer_t fb)
 {
   int ret = SUCCESS;
 
-  printf("Screenshot handler called: %s\n", filename);
+  em_printf("Screenshot handler called: %s\n", filename);
 
   FIL fil;
   FRESULT fr;
@@ -584,7 +526,7 @@ int screenshot_saver(char *filename, gbuffer_t fb)
   fr = f_open(&fil, filename, FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
 
   if (fr != FR_OK) {
-    printf("screenshot_save: open file failed: %d\n", (int) fr);
+    em_printf("screenshot_save: open file failed: %d\n", (int) fr);
     return ERR_SD_OPEN_FIL;  // error opening
   }
 
@@ -642,13 +584,13 @@ int screenshot_saver(char *filename, gbuffer_t fb)
     buf_tmp += bw;
     pos += bw;
     if ((fr != FR_OK) || (bw != 2048)) {
-      printf("Error writing screenshot data.\n");
+      em_printf("Error writing screenshot data.\n");
       ret = ERR_SD_WRITING;
       goto bailout;
     }
   }
 
-  printf("Screenshot saved.\n\n");
+  em_printf("Screenshot saved.\n\n");
 
   bailout:
 
@@ -667,12 +609,12 @@ int load_state_handler(char *filename)
   FIL fil;
   FRESULT fr;
 
-  printf("Loadstate handler called...\n\n");
+  em_printf("Loadstate handler called...\n\n");
 
   fr = f_open(&fil, filename, FA_READ);
 
   if (fr != FR_OK) {
-    printf("loadstate handler: open file failed: %d\n", (int) fr);
+    em_printf("loadstate handler: open file failed: %d\n", (int) fr);
     return ERR_SD_OPEN_FIL;
   }
 
@@ -681,7 +623,7 @@ int load_state_handler(char *filename)
   S9xReset();
 
   // At this point we can't go back and a failure will corrupt the state anyway
-  printf("Now reading to memory.\n");
+  em_printf("Now reading to memory.\n");
 
   fr = f_read (&fil, (uint8_t*) &CPU, sizeof(CPU), &br);
   if ((fr != FR_OK) || (br != sizeof(CPU))) {
@@ -744,7 +686,7 @@ int load_state_handler(char *filename)
     goto bailout;
   }
 
-  printf("Game state loaded.\n");
+  em_printf("Game state loaded.\n");
 
 bailout:
 
@@ -841,7 +783,7 @@ int get_item_cnt(char* buffer) {
   return ERR_UNSPEC;
 }
 
-int get_directory(char *path, char* buffer) {
+int get_directory(const char *path, char* buffer) {
     FRESULT res;
     DIR dir;
     FILINFO fno;
@@ -862,7 +804,7 @@ int get_directory(char *path, char* buffer) {
         }
         f_closedir(&dir);
     } else {
-        printf("Error reading directory: \"%s\". (%u)\n", path, res);
+        em_printf("Error reading directory: \"%s\". (%u)\n", path, res);
         return ERR_SD_OPEN_DIR;
     }
 
@@ -874,7 +816,7 @@ int draw_rectangle(coord_t x, coord_t y, coord_t width, coord_t height, int tran
   gbuffer_t fb_tmp;
 
   if (gbuf_create(&fb_tmp, width, height, (void*) sfe_mem_malloc(width * height * 2)) != BUF_SUCCESS) {
-    printf("Error: Cannot allocate PSRAM\n");
+    em_printf("Error: Cannot allocate PSRAM\n");
     return ERR_PSRAM;
   }
 
@@ -917,11 +859,13 @@ int progress_bar(const char* caption, int value, gbuffer_t fb) {
   int menu_border_width = gbuf_get_width(corner_top_left);
   int menu_border_height = gbuf_get_height(corner_top_left);
 
-  int menu_offset_x = 30;
+  int menu_offset_x = 50;
 
   int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
-  int bar_height = 10;
-  int menu_height = font_get_height(menu_font) + bar_height + 20;
+  int bar_height = gbuf_get_height(bar_mid_empty_image);
+  int menu_height = font_get_height(menu_font) + bar_height + 5;
+  int bar_offset_y = 2;
+  int font_offset_y = 4;
 
   int menu_offset_y = (gbuf_get_height(fb) - menu_height) / 2;
 
@@ -936,28 +880,92 @@ int progress_bar(const char* caption, int value, gbuffer_t fb) {
                   translucency,
                   fb_back);
 
-  font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
-  font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, (char*) caption, menu_font, fb_back);
+  font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - font_offset_y, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
+  font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - font_offset_y, menu_font_caption_color, (char*) caption, menu_font, fb_back);
 
   int bar_start = menu_offset_x + 10 + gbuf_get_width(bar_left_full_image);
   int bar_end = menu_offset_x + 10 + menu_width - 20 - gbuf_get_width(bar_right_full_image);
     
   for (int i = 0; i < bar_end - bar_start; i++) {
     if (i * 100 / (bar_end - bar_start) > value)
-      blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_mid_empty_image, fb_back);  
+      blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_mid_empty_image, fb_back);  
     else
-      blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_mid_full_image, fb_back);  
+      blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_mid_full_image, fb_back);  
   }
 
-  blit_buf(menu_offset_x + 10 + (menu_width - 20 - gbuf_get_width(bar_right_full_image)), gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_empty_image, fb_back);
-  blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_left_full_image, fb_back);
-  blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_full_image, fb_back);
+  blit_buf(menu_offset_x + 10 + (menu_width - 20 - gbuf_get_width(bar_right_full_image)), gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_right_empty_image, fb_back);
+  blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_left_full_image, fb_back);
+  blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_right_full_image, fb_back);
 
   draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
   lcd.request_pageflip();
 
   return 0;
 
+}
+
+int load_rom_from_sd(char* filename, gbuffer_t fb) {
+  int ret = 0;
+  FIL fil;
+  FRESULT fr;
+
+  int step = 0;
+  int percent = 0; 
+
+  fr = f_open(&fil, filename, FA_READ);
+
+  if (fr != FR_OK) {
+      em_printf("open file failed: %d\n", (int) fr);
+      return ERR_SD_OPEN_FIL;
+  }
+  
+  em_printf("open complete\n");
+
+  if (psram_rom)
+    sfe_mem_free(psram_rom);
+
+  uint32_t filesize = f_size(&fil);
+  psram_rom = sfe_mem_malloc(filesize);
+  uint8_t* buf = (uint8_t*) psram_rom;
+  uint32_t unread_bytes = filesize;
+
+  if (!buf) {
+    em_printf("unable to get buffer (%d bytes).\n", filesize);
+    ret = ERR_PSRAM;
+    goto bailout;
+  }
+
+  em_printf("Got buffer (%d bytes).\n", filesize);
+
+  Memory.ROM = buf;
+  Memory.ROM_Size = filesize;
+
+  while (unread_bytes) {
+    UINT bytes_read;
+    fr = f_read (&fil, buf, 2048 /* read len */, &bytes_read);
+    buf += bytes_read;
+    unread_bytes -= bytes_read;
+    if ((fr != FR_OK) && unread_bytes) {
+      em_printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
+      ret = ERR_SD_READING;
+      goto bailout;
+    }
+    
+    percent = 100 - unread_bytes * 100 / filesize;
+    if (percent >= step) {
+      step += 5;  // smoothness
+      em_printf("Loading from SD: %d %\n", percent);
+      progress_bar(str_loading, percent, fb);
+    }
+  }
+
+  em_printf("successfully read %d bytes from file %s\n", (int) filesize, filename);
+  
+bailout:
+
+  f_close(&fil);
+  
+  return ret;
 }
 
 int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_t fb) {
@@ -974,8 +982,8 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
   int menu_offset_x = 50;
 
   int menu_width = gbuf_get_width(fb) - 2 * menu_offset_x;
-  int bar_height = 10;
-  int menu_height = font_get_height(menu_font) + bar_height + 20;
+  int bar_height = gbuf_get_height(bar_mid_empty_image);
+  int menu_height = font_get_height(menu_font) + bar_height + 5;
 
   int menu_offset_y = (gbuf_get_height(fb) - menu_height) / 2;
 
@@ -986,6 +994,9 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
   int value = start_val;
   int first_run = 1;
   int buttons_locked = 1;
+
+  int bar_offset_y = 2;
+  int font_offset_y = 4;
 
   if ((step < 1) || (step > 50))
     step = 10;
@@ -1055,22 +1066,22 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
                    translucency,
                    fb_back);
 
-    font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
-    font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - 10, menu_font_caption_color, (char*) caption, menu_font, fb_back);
+    font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - font_offset_y, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
+    font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - font_offset_y, menu_font_caption_color, (char*) caption, menu_font, fb_back);
 
     int bar_start = menu_offset_x + 10 + gbuf_get_width(bar_left_full_image);
     int bar_end = menu_offset_x + 10 + menu_width - 20 - gbuf_get_width(bar_right_full_image);
     
     for (int i = 0; i < bar_end - bar_start; i++) {
       if (i * 100 / (bar_end - bar_start) > value)
-        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_mid_empty_image, fb_back);  
+        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_mid_empty_image, fb_back);  
       else
-        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_mid_full_image, fb_back);  
+        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_mid_full_image, fb_back);  
     }
 
-    blit_buf(menu_offset_x + 10 + (menu_width - 20 - gbuf_get_width(bar_right_full_image)), gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_empty_image, fb_back);
-    blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_left_full_image, fb_back);
-    blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 - 0, 0xf81f, bar_right_full_image, fb_back);
+    blit_buf(menu_offset_x + 10 + (menu_width - 20 - gbuf_get_width(bar_right_full_image)), gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_right_empty_image, fb_back);
+    blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_left_full_image, fb_back);
+    blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_right_full_image, fb_back);
 
     draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
     lcd.request_pageflip();
@@ -1288,25 +1299,64 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, int delay,
       // When there is a great number of items (like in a directory)
       // use a position indicator
 
+      int scroll_bar_offset = gbuf_get_width(bar_up_full_image) - 2;
+
+#if 1
       for (int i = 0; i < total_range_y; i++) {
         if ((i * 100) / total_range_y < scrl_pcnt * 100)
-          blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + i, 0xf81f, bar_mid_h_full_image, fb_back);
+          blit_buf(menu_offset_x + menu_width - scroll_bar_offset, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + i, 0xf81f, bar_mid_h_full_image, fb_back);
         else
-          blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + i, 0xf81f, bar_mid_h_empty_image, fb_back);
+          blit_buf(menu_offset_x + menu_width - scroll_bar_offset, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + i, 0xf81f, bar_mid_h_empty_image, fb_back);
       }
+#else
+      draw_rect_fill(menu_offset_x + menu_width - scroll_bar_offset + 1,
+                     scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + 0,
+                     menu_offset_x + menu_width - scroll_bar_offset + gbuf_get_width(bar_up_full_image) - 2,
+                     (int) (scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + (total_range_y * (scrl_pcnt * 100)) / 100 - 1),
+                     0xc638,
+                     fb_back);
 
-      // arrow up
-      //font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y, 0x0, 'A', menu_font, fb_back);
-      blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y, 0xf81f, bar_up_full_image, fb_back);
+      // full line left
+      draw_line(menu_offset_x + menu_width - scroll_bar_offset,
+                scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + 0,
+                menu_offset_x + menu_width - scroll_bar_offset,
+                (int) (scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + (total_range_y * (scrl_pcnt * 100)) / 100 - 1),
+                0xa514,
+                fb_back);
+
+      // full line right
+      draw_line(menu_offset_x + menu_width - scroll_bar_offset + gbuf_get_width(bar_up_full_image),
+                scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + 0,
+                menu_offset_x + menu_width - scroll_bar_offset + gbuf_get_width(bar_up_full_image),
+                scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + total_range_y * scrl_pcnt - 1,
+                0x0000,
+                fb_back);
+
+      // empty line left
+      draw_line(menu_offset_x + menu_width - scroll_bar_offset,
+                scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + total_range_y * scrl_pcnt,
+                menu_offset_x + menu_width - scroll_bar_offset,
+                scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + total_range_y - 2,
+                0x0000,
+                fb_back);
+
+      // emptry line right
+      draw_line(menu_offset_x + menu_width - scroll_bar_offset + gbuf_get_width(bar_up_full_image) - 1,
+                scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + total_range_y * scrl_pcnt,
+                menu_offset_x + menu_width - scroll_bar_offset + gbuf_get_width(bar_up_full_image) - 1,
+                scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + total_range_y - 2,
+                0xa514,
+                fb_back);
+#endif
+
+      // bar upper end
+      blit_buf(menu_offset_x + menu_width - scroll_bar_offset, scrl_up_arrow_y, 0xf81f, bar_up_full_image, fb_back);
       
-      // arrow down
-      //font_put_char(menu_offset_x + menu_width - 10, scrl_down_arrow_y, 0x0, 'V', menu_font, fb_back);
-      blit_buf(menu_offset_x + menu_width - 10, scrl_down_arrow_y, 0xf81f, bar_down_empty_image, fb_back);
+      // bar lower end
+      blit_buf(menu_offset_x + menu_width - scroll_bar_offset, scrl_down_arrow_y, 0xf81f, bar_down_empty_image, fb_back);
 
       // position indicator
-      //blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y + (font_get_height(menu_font) + menu_items_clearance_y) + total_range_y * scrl_pcnt, 0xf81f, scroll_dot_image, fb_back);
-      //font_put_char(menu_offset_x + menu_width - 10, scrl_up_arrow_y + (font_get_height(menu_font) + menu_items_clearance_y) + total_range_y * scrl_pcnt, 0x0, 'O', menu_font, fb_back);
-      blit_buf(menu_offset_x + menu_width - 10, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + total_range_y * scrl_pcnt, 0xf81f, bar_down_full_image, fb_back);
+      blit_buf(menu_offset_x + menu_width - scroll_bar_offset, scrl_up_arrow_y + gbuf_get_height(bar_up_full_image) + total_range_y * scrl_pcnt, 0xf81f, bar_down_full_image, fb_back);
 
     } /* else if (num_itms > max_vis_items) {
       // When there is only a small number of items
@@ -1386,6 +1436,10 @@ leave:
 
 }
 
+void message(const char* item_list, bool centered, uint32_t delay, gbuffer_t fb) {
+  selection_menu((char*) item_list, centered, true, delay, fb);
+};
+
 int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
   gbuffer_t fb_back;
 
@@ -1421,7 +1475,7 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
   bool img_valid = false;
   
   if (gbuf_create(&thumbnail, SNES_WIDTH / 2, SNES_HEIGHT / 2, (void*) sfe_mem_malloc(SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2)) != BUF_SUCCESS) {
-    printf("Error: Cannot allocate PSRAM\n");
+    em_printf("Error: Cannot allocate PSRAM\n");
     goto leave;
   }
 
@@ -1619,16 +1673,16 @@ int copy_rom_to_flash(gbuffer_t fb) {
   if (erase_size % FLASH_SECTOR_SIZE)
     erase_size = (erase_size / FLASH_SECTOR_SIZE + 1) * FLASH_SECTOR_SIZE;
 
-  printf("trying to erase %d bytes @ %d\n", (int) erase_size, (int) rom_flash_address);
+  em_printf("trying to erase %d bytes @ %d\n", (int) erase_size, (int) rom_flash_address);
 
   for (int i = 0; i < erase_size / FLASH_SECTOR_SIZE; i++) {
     //flash_range_erase(rom_flash_address + i * FLASH_SECTOR_SIZE, FLASH_SECTOR_SIZE);
     int rc = flash_safe_execute(call_flash_range_erase, (void*) (rom_flash_address + i * FLASH_SECTOR_SIZE), UINT32_MAX);
     //hard_assert(rc == PICO_OK);
     if (rc == PICO_OK)
-      printf("erased 2k @ %d\n", (int)rom_flash_address + i * FLASH_SECTOR_SIZE);
+      em_printf("erased 2k @ %d\n", (int)rom_flash_address + i * FLASH_SECTOR_SIZE);
     else
-      printf("failed to erase 2k @ %d reason: %d\n", (int)rom_flash_address + i * FLASH_SECTOR_SIZE, rc);
+      em_printf("failed to erase 2k @ %d reason: %d\n", (int)rom_flash_address + i * FLASH_SECTOR_SIZE, rc);
     //	percent = 100 * (i * FLASH_SECTOR_SIZE) / erase_size;
     percent = 66 * (i * FLASH_SECTOR_SIZE) / erase_size;
     if (percent - percent_old > 5) {
@@ -1682,7 +1736,7 @@ int menu_loadfile(gbuffer_t fb) {
   strcpy(&buffer[pos], str_go_back);
   pos += strlen(&buffer[pos]);
   
-  res = get_directory(ROM_DIRECTORY, &buffer[pos + 1]);
+  res = get_directory(rom_directory, &buffer[pos + 1]);
   if (res != 0) {
     ret = ERR_SD_OPEN_DIR;
     goto bailout;
@@ -1694,19 +1748,20 @@ int menu_loadfile(gbuffer_t fb) {
   buf_tmp[strlen(buf_tmp) + 1 + strlen(str_go_back) + 2] = terminatorstring;
 
   res = selection_menu((char*) buffer, false, false, 0, fb);
-  if ((res == 0) || (res == (get_item_cnt(buffer) - 1))) {
+  em_printf("Selection is %d of %d\n", res, get_item_cnt(buffer));
+  if ((res == 0) || (res == (get_item_cnt(buffer) - 1 - 1 /* minus the caption */))) {
     ret = ERR_ABORTED;
     goto bailout;
   }
 
-  strcpy(filename, ROM_DIRECTORY);
+  strcpy(filename, rom_directory);
   strcat(filename, get_item(res + 1, buffer));
 
-  printf("filename to load is: %s\n", filename);
+  em_printf("filename to load is: %s\n", filename);
 
   ret = load_rom_from_sd(filename, fb);
   if (ret != 0) {
-    printf("load_rom_from_sd return %d\n", ret);
+    em_printf("load_rom_from_sd return %d\n", ret);
     goto bailout;
   }
 
@@ -1746,7 +1801,7 @@ void emumgr_menu(gbuffer_t fb) {
   char* filename = (char*) sfe_mem_malloc(520);
 
   if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS) {
-    printf("Error: Cannot allocate PSRAM\n");
+    em_printf("Error: Cannot allocate PSRAM\n");
     return;
   }
 
@@ -1876,35 +1931,33 @@ void emumgr_menu(gbuffer_t fb) {
         res = menu_loadfile(fb_saved);
         switch (res) {
           case SUCCESS:
-            printf("starting emulation\n");
+            em_printf("starting emulation\n");
             goto leave;
-/*
           case ERR_ABORTED:
-            message(str_err_aborted, true, 1000, fb_saved);
-            printf("aborted by user\n");
+            //message(str_err_aborted, true, 1000, fb_saved);
+            em_printf("aborted by user\n");
             break;
-*/
           case ERR_PSRAM:
-            printf("no psram\n");
+            em_printf("no psram\n");
             break;
           case ERR_SD_OPEN_DIR:
             sd_deinit();
             message(str_err_open_dir, true, 0, fb_saved);
-            printf("cannot read dir\n");
+            em_printf("cannot read dir\n");
             break;
           case ERR_SD_OPEN_FIL:
             sd_deinit();
             message(str_err_open_file, true, 0, fb_saved);
-            printf("cannot open file\n");
+            em_printf("cannot open file\n");
             break;
           case ERR_LOAD_ROM:
             message(str_err_rom, true, 0, fb_saved);
-            printf("error reading file\n");
+            em_printf("error reading file\n");
             break;
           case ERR_SD_READING:
             sd_deinit();
             message(str_err_read_file, true, 0, fb_saved);
-            printf("error loading rom\n");
+            em_printf("error loading rom\n");
             break;
           default:
             break;

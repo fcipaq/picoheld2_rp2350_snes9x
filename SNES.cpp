@@ -479,7 +479,7 @@ int main(void)
         draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
 #endif
 
-      #if 1 // bat info
+      #if 0 // bat info
       char debug_print[10];
       itoa(bat_volt, debug_print, 10);
       font_write_string(11, 11 + 15, 0x0, debug_print, (font_t*) font_13x16, fb_back);
