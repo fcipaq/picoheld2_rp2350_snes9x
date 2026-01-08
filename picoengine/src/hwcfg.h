@@ -60,7 +60,7 @@
 // Physical battery and power supply parameters (in mV)
 #define PWR_REF_VOL     (3300)
 #define PWR_BAT_MAX_VOL (4050)
-#define PWR_BAT_MIN_VOL (3300)
+#define PWR_BAT_MIN_VOL (3400)
 #define PWR_CHG_MIN_VOL (4120)
 
 /* ------------------------ Sound ------------------------*/

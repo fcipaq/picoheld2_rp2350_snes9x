@@ -40,6 +40,7 @@
 #include "../assets/rect.h"
 #include "../assets/scroll_bar.h"
 #include "../assets/battery.h"
+#include "../assets/thumbnail.h"
 #include <fonts/fontfiles/picoheld_pixel_6x7.h>
 
 extern "C" {
@@ -115,6 +116,7 @@ int supply_type_last = -1;
 
 #define SAVESTATE_DIRECTORY "/roms/snes/save/"
 #define ROM_DIRECTORY "/roms/snes/"
+#define MAX_NUM_SAVESTATES (6)
 
 #define SUCCESS 0
 #define ERR_UNSPEC -1
@@ -168,25 +170,11 @@ const char main_menu_items[] = { STR_MAIN_TITLE"\0"\
                                  STR_SHUTDOWN"\0"\
                                  MENU_LST };
 
-const char save_menu_items[] = { STR_SAVE_STATE"\0"\
-                                 STR_SLOT_1"\0"\
-                                 STR_SLOT_2"\0"\
-                                 STR_SLOT_3"\0"\
-                                 STR_SLOT_4"\0"\
-                                 STR_SLOT_5"\0"\
-                                 STR_SLOT_6"\0"\
-                                 STR_GO_BACK"\0"\
-                                 MENU_LST };
+const char save_menu[] = { STR_SAVE_STATE"\0"\
+                           MENU_LST };
 
-const char load_menu_items[] = { STR_LOAD_STATE"\0"\
-                                  STR_SLOT_1"\0"\
-                                  STR_SLOT_2"\0"\
-                                  STR_SLOT_3"\0"\
-                                  STR_SLOT_4"\0"\
-                                  STR_SLOT_5"\0"\
-                                  STR_SLOT_6"\0"\
-                                  STR_GO_BACK"\0"\
-                                  MENU_LST };
+const char load_menu[] = { STR_LOAD_STATE"\0"\
+                           MENU_LST };
 
 const char str_err_rom[] = {  STR_ERROR"\0"\
                               STR_ERR_ROM"\0"\
@@ -202,6 +190,9 @@ const char str_loading[] = {  STR_LOADING"\0"\
                               MENU_LST };
 
 const char str_go_back[] = {  STR_GO_BACK"\0"\
+                              MENU_LST };
+
+const char str_back[] = {  STR_BACK"\0"\
                               MENU_LST };
 
 const char str_load_game_first[] = { STR_LOAD_GAME_FIRST"\0"\
@@ -276,7 +267,7 @@ void draw_battery(int x, int y, int percent, gbuffer_t fb_back) {
       }       
     }
 
-    int level = percent / 25;
+    int level = percent / 33;
     
     if (level > 3)
       level = 3;
@@ -378,6 +369,43 @@ int sd_init() {
   return true;
 }
 
+int read_image_to_gbuf(char* filename, gbuffer_t fb) {
+  FIL fil;
+  FRESULT fr;
+  int ret = SUCCESS;
+
+  fr = f_open(&fil, filename, FA_READ);
+
+  if (fr != FR_OK) {
+      printf("read_image_to_gbuf: open file (%s) failed: %d\n", filename, (int) fr);
+      return ERR_SD_OPEN_FIL;
+  }
+
+  uint32_t pos = 0;
+  uint8_t* buf = (uint8_t*) gbuf_get_dat_ptr(fb);
+  uint32_t unread_bytes = f_size(&fil);
+
+  while (unread_bytes && (pos < gbuf_get_width(fb) * gbuf_get_height(fb) * 2) ) {
+    UINT br;
+    fr = f_read (&fil, buf, 2048 /* read len */, &br);
+    buf += br;
+    unread_bytes -= br;
+    pos += br;
+    if ((fr != FR_OK) && unread_bytes) {
+      printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
+      ret = ERR_SD_READING;
+      goto bailout;
+    }    
+  }
+
+  bailout:
+
+  f_close(&fil);
+
+  return ret;
+  
+}
+
 int load_rom_from_sd(char* filename, gbuffer_t fb) {
   int ret = 0;
   FIL fil;
@@ -460,7 +488,7 @@ int save_state_handler(char *filename)
   fr = f_open(&fil, filename, FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
 
   if (fr != FR_OK) {
-    printf("open file failed: %d\n", (int) fr);
+    printf("savestate handler: open file failed: %d\n", (int) fr);
     return ERR_SD_OPEN_FIL;  // error opening
   }
 
@@ -536,6 +564,102 @@ int save_state_handler(char *filename)
   return ret;
 }
 
+int screenshot_saver(char *filename, gbuffer_t fb)
+{
+  int ret = SUCCESS;
+
+  printf("Screenshot handler called: %s\n", filename);
+
+  FIL fil;
+  FRESULT fr;
+  UINT bw;
+
+  uint32_t filesize = SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2;
+  uint32_t pos = 0;
+  uint16_t* buf_src_16 = (uint16_t*) gbuf_get_dat_ptr(fb);
+  uint8_t* buf_dst;
+  uint16_t* buf_dst_16;
+  uint8_t* buf_tmp;
+  
+  fr = f_open(&fil, filename, FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
+
+  if (fr != FR_OK) {
+    printf("screenshot_save: open file failed: %d\n", (int) fr);
+    return ERR_SD_OPEN_FIL;  // error opening
+  }
+
+  buf_dst = (uint8_t*) sfe_mem_malloc(SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2);
+  if (!buf_dst) {
+    ret = ERR_PSRAM;
+    goto bailout;
+  }
+
+  buf_dst_16 = (uint16_t*) buf_dst;
+  buf_tmp = buf_dst;
+
+  #if 0
+  // bilinear interpolation
+  for (int y = SNES_HEIGHT / 2 - 1; y < SNES_HEIGHT / 2; y++)
+    for (int x = SNES_WIDTH / 2 - 1; x < SNES_WIDTH / 2; x++)
+      buf_dst_16[x + y * SNES_WIDTH / 2] = 0;
+
+  for (int y = 0; y < SNES_HEIGHT / 2 - 1; y++)
+    for (int x = 0; x < SNES_WIDTH / 2 - 1; x++) {
+          uint8_t r1 = (buf_src_16[x * 2 + y * 2 * SNES_WIDTH] >> 11) & 0x1f;
+          uint8_t g1 = (buf_src_16[x * 2 + y * 2 * SNES_WIDTH] >> 5) & 0x3f;
+          uint8_t b1 = (buf_src_16[x * 2 + y * 2 * SNES_WIDTH]) & 0x1f;
+          uint8_t r2 = (buf_src_16[(x + 1) * 2 + y * 2 * SNES_WIDTH] >> 11) & 0x1f;
+          uint8_t g2 = (buf_src_16[(x + 1) * 2 + y * 2 * SNES_WIDTH] >> 5) & 0x3f;
+          uint8_t b2 = (buf_src_16[(x + 1) * 2 + y * 2 * SNES_WIDTH]) & 0x1f;
+          uint8_t r3 = (buf_src_16[x * 2 + (y + 1) * 2 * SNES_WIDTH] >> 11) & 0x1f;
+          uint8_t g3 = (buf_src_16[x * 2 + (y + 1) * 2 * SNES_WIDTH] >> 5) & 0x3f;
+          uint8_t b3 = (buf_src_16[x * 2 + (y + 1) * 2 * SNES_WIDTH]) & 0x1f;
+          uint8_t r4 = (buf_src_16[(x + 1) * 2 + (y + 1) * 2 * SNES_WIDTH] >> 11) & 0x1f;
+          uint8_t g4 = (buf_src_16[(x + 1) * 2 + (y + 1) * 2 * SNES_WIDTH] >> 5) & 0x3f;
+          uint8_t b4 = (buf_src_16[(x + 1) * 2 + (y + 1) * 2 * SNES_WIDTH]) & 0x1f;
+          uint16_t a = ((r1 + r2 + r3 + r4) / 4) << 11 |
+                       ((g1 + g2 + g3 + g4) / 4) << 5 |
+                        (b1 + b2 + b3 + b4) / 4;
+          // suppress chroma key
+          if (a == 0xf81f)
+            0xf81e;
+          buf_dst_16[x + y * SNES_WIDTH / 2] = a;
+  }
+  #else
+  for (int y = 0; y < SNES_HEIGHT / 2; y++)
+    for (int x = 0; x < SNES_WIDTH / 2; x++) {
+      uint16_t a = buf_src_16[x * 2 + y * 2 * SNES_WIDTH];
+      // suppress chroma key
+      if (a == 0xf81f)
+        0xf81e;
+      buf_dst_16[x + y * SNES_WIDTH / 2] = a;
+    }
+  #endif
+
+  while (pos < filesize) {
+    UINT bw;
+    fr = f_write(&fil, (void*) buf_tmp, 2048, &bw);
+    buf_tmp += bw;
+    pos += bw;
+    if ((fr != FR_OK) || (bw != 2048)) {
+      printf("Error writing screenshot data.\n");
+      ret = ERR_SD_WRITING;
+      goto bailout;
+    }
+  }
+
+  printf("Screenshot saved.\n\n");
+
+  bailout:
+
+  f_close(&fil);
+
+  if (buf_dst)
+    sfe_mem_free(buf_dst);
+  
+  return ret;
+}
+
 int load_state_handler(char *filename)
 {
   int ret = SUCCESS;
@@ -548,7 +672,7 @@ int load_state_handler(char *filename)
   fr = f_open(&fil, filename, FA_READ);
 
   if (fr != FR_OK) {
-    printf("open file failed: %d\n", (int) fr);
+    printf("loadstate handler: open file failed: %d\n", (int) fr);
     return ERR_SD_OPEN_FIL;
   }
 
@@ -1262,6 +1386,210 @@ leave:
 
 }
 
+int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
+  gbuffer_t fb_back;
+
+  color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
+  color_t menu_font_selected_color = MENU_FONT_SELECTED_COLOR;
+  color_t menu_font_unselected_color = MENU_FONT_UNSELECTED_COLOR;
+  color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
+
+  font_t* menu_font = (font_t*) MENU_FONT;
+
+  int menu_border_width = gbuf_get_width(corner_top_left);
+  int menu_border_height = gbuf_get_height(corner_top_left);
+
+  int clearance_y = 5;
+  int menu_height = SNES_HEIGHT / 2 + font_get_height(menu_font) + 2.5 * clearance_y - menu_border_height;  // difference for clearance of caption
+  int menu_arrow_gap = 6;
+  int menu_width = SNES_WIDTH / 2 + font_get_char_width('>', menu_font) + font_get_char_width('<', menu_font) + menu_arrow_gap;
+  
+  int menu_offset_x = (gbuf_get_width(fb) - menu_width) / 2;
+  int menu_offset_y = (gbuf_get_height(fb) - menu_height) / 2;
+
+  int b_debounce = 0;
+  int b_debounce_timer = 0;
+  int b_repeater = 0;
+
+  int cur_itm = 0;
+  int num_itms = MAX_NUM_SAVESTATES + 1;
+  int itm_lst = -1;
+  int first_run = 1;
+  int buttons_locked = 1;
+
+  gbuffer_t thumbnail;
+  bool img_valid = false;
+  
+  if (gbuf_create(&thumbnail, SNES_WIDTH / 2, SNES_HEIGHT / 2, (void*) sfe_mem_malloc(SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2)) != BUF_SUCCESS) {
+    printf("Error: Cannot allocate PSRAM\n");
+    goto leave;
+  }
+
+  while (1) {
+    lcd.get_backbuffer(&fb_back);
+    blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
+    if (menu_first_run)
+      stars_draw(fb_back);
+
+    draw_rectangle(menu_offset_x - menu_border_width,
+                   menu_offset_y - menu_border_height,
+                   menu_width + menu_border_width * 2,
+                   menu_height + menu_border_height * 2,
+                   translucency,
+                   fb_back);
+    
+    // caption
+    font_write_string_centered(1 + menu_offset_x + menu_width / 2, 1 + menu_offset_y, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
+    font_write_string_centered(menu_offset_x + menu_width / 2, menu_offset_y, menu_font_caption_color, (char*) caption, menu_font, fb_back);
+
+    if (cur_itm >= 0 && cur_itm < (MAX_NUM_SAVESTATES)) {
+      if (itm_lst != cur_itm) {
+        strcpy(filename,  SAVESTATE_DIRECTORY);
+        strcat(filename, Memory.ROMName);
+        char slot_num[3];
+        itoa(cur_itm + 1, slot_num, 10);
+        strcat(filename, slot_num);
+        strcat(filename, ".img");
+
+        img_valid = read_image_to_gbuf(filename, thumbnail) == SUCCESS;
+        itm_lst = cur_itm;
+      }
+
+      if (img_valid) {
+          blit_buf(0, 0, 0xf81e, thumb_corner_top_left, thumbnail);
+          blit_buf(0, gbuf_get_height(thumbnail) - gbuf_get_height( thumb_corner_bottom_left), 0xf81e, thumb_corner_bottom_left, thumbnail);
+          blit_buf(gbuf_get_width(thumbnail) - gbuf_get_width(thumb_corner_top_right), 0, 0xf81e, thumb_corner_top_right, thumbnail);
+          blit_buf(gbuf_get_width(thumbnail) - gbuf_get_width(thumb_corner_bottom_right), gbuf_get_height(thumbnail) - gbuf_get_height(thumb_corner_bottom_right), 0xf81e, thumb_corner_bottom_right, thumbnail);
+
+          blit_buf(menu_offset_x + menu_width / 2 - SNES_WIDTH / 4,
+                   menu_offset_y + font_get_height(menu_font) + clearance_y,
+                  0xf81f,
+                  thumbnail, fb_back);  
+      } else {
+        draw_rect_fill(menu_offset_x + menu_width / 2 - SNES_WIDTH / 4,
+                       menu_offset_y + font_get_height(menu_font) + clearance_y,
+                       menu_offset_x + menu_width / 2 - SNES_WIDTH / 4  + SNES_WIDTH / 2,
+                       menu_offset_y + font_get_height(menu_font) + clearance_y  + SNES_HEIGHT / 2,
+                       0xf81f,
+                       fb_back);
+      }
+
+      char debug_print[3];
+      itoa(cur_itm + 1, debug_print, 10);    
+      font_write_string_centered(menu_offset_x + menu_width / 2 + 1,
+                                 menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4 + 1,
+                                 menu_font_shadow_color,
+                                 debug_print,
+                                 menu_font,
+                                 fb_back);
+      font_write_string_centered(menu_offset_x + menu_width / 2,
+                                 menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4,
+                                 menu_font_caption_color,
+                                 debug_print,
+                                 menu_font,
+                                 fb_back);
+
+    } else {
+      font_write_string_centered(menu_offset_x + menu_width / 2 + 1,
+                                 menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4 + 1,
+                                 menu_font_shadow_color,
+                                 (char*) str_back,
+                                 menu_font,
+                                 fb_back);
+      font_write_string_centered(menu_offset_x + menu_width / 2,
+                                 menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4,
+                                 menu_font_caption_color,
+                                 (char*) str_back,
+                                 menu_font,
+                                 fb_back);
+    }
+
+    // left/right arrows
+    if (cur_itm != 0) {
+      font_put_char(menu_offset_x - menu_border_width + menu_arrow_gap + 1,
+                    menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4 + 1,
+                    menu_font_shadow_color,
+                    '<',
+                    menu_font,
+                    fb_back);
+      font_put_char(menu_offset_x - menu_border_width + menu_arrow_gap,
+                    menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4,
+                    menu_font_caption_color,
+                    '<',
+                    menu_font, fb_back);
+    }
+
+    if (cur_itm != (num_itms - 1)) {
+      font_put_char(menu_offset_x + menu_border_width - menu_arrow_gap + menu_width - font_get_char_width('>', menu_font) + 1,
+                    menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4 + 1,
+                    menu_font_shadow_color,
+                    '>',
+                    menu_font,
+                    fb_back);
+      font_put_char(menu_offset_x + menu_border_width - menu_arrow_gap + menu_width - font_get_char_width('>', menu_font),
+                    menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4,
+                    menu_font_caption_color,
+                    '>',
+                    menu_font, fb_back);
+    }
+
+    ctrl_button_state_update();
+
+    if (first_run && buttons_locked && !ctrl_is_pressed(BUTTON_ANY)) {
+      first_run = 0;
+      buttons_locked = 0;
+    }
+
+    if (!buttons_locked) {
+      // return selected item
+      if (ctrl_is_pressed(BUTTON_A) ||
+          ctrl_is_pressed(BUTTON_B) ||
+          ctrl_is_pressed(BUTTON_X) ||
+          ctrl_is_pressed(BUTTON_Y) ||
+          ctrl_is_pressed(BUTTON_L) ||
+          ctrl_is_pressed(BUTTON_R) ||
+          ctrl_is_pressed(BUTTON_ST) ||
+          ctrl_is_pressed(BUTTON_SEL) ||
+          ctrl_is_pressed(BUTTON_SW))
+        goto leave;
+
+      if (ctrl_is_pressed(BUTTON_RIGHT) && !b_debounce && (cur_itm < (num_itms - 1)))
+        cur_itm++;
+
+      if (ctrl_is_pressed(BUTTON_LEFT) && !b_debounce && (cur_itm > 0))
+        cur_itm--;
+
+      if (!ctrl_is_pressed(BUTTON_ANY)) {
+        b_debounce = 0;
+        b_repeater = 0;
+      } else {
+        if (b_debounce == 0) {
+          b_debounce = 1;
+          b_debounce_timer = millis();
+        } else if ((millis() - b_debounce_timer > MENU_REPEAT_START) && !b_repeater) {
+          b_repeater = 1;
+          b_debounce = 0;
+          b_debounce_timer = millis();         
+        } else if ((millis() - b_debounce_timer > MENU_REPEAT_DELAY) && b_repeater) {
+          b_debounce = 0;
+          b_debounce_timer = millis();         
+        }
+      }
+    }
+
+    draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
+    lcd.request_pageflip();
+  }
+
+leave:
+
+  if (gbuf_get_dat_ptr(thumbnail))
+    sfe_mem_free((void*) gbuf_get_dat_ptr(thumbnail));
+
+  return cur_itm;
+
+}
+
 static void call_flash_range_erase(void *param) {
     uint32_t offset = (uint32_t)param;
     flash_range_erase(offset, FLASH_SECTOR_SIZE);
@@ -1448,8 +1776,8 @@ void emumgr_menu(gbuffer_t fb) {
           message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
           break;
         }
-        sub_choice = selection_menu((char*) load_menu_items, true, false, 0, fb_saved);
-        if ((sub_choice >= 0) && (sub_choice <= 5)) {
+        sub_choice = savestate_selector(load_menu, filename, fb_saved);
+        if ((sub_choice >= 0) && (sub_choice < MAX_NUM_SAVESTATES)) {
           if (!sd_init()) {
             message(str_err_sd_mount, true, 0, fb_saved);
             break;
@@ -1481,8 +1809,9 @@ void emumgr_menu(gbuffer_t fb) {
           message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
           break;
         }
-        sub_choice = selection_menu((char*) save_menu_items, true, false, 0, fb_saved);
-        if ((sub_choice >= 0) && (sub_choice <= 5)) {
+        sub_choice = savestate_selector(save_menu, filename, fb_saved);
+        //selection_menu((char*) save_menu_items, true, false, 0, fb_saved);
+        if ((sub_choice >= 0) && (sub_choice < MAX_NUM_SAVESTATES)) {
           strcpy(filename,  SAVESTATE_DIRECTORY);
           strcat(filename, Memory.ROMName);
           char slot_num[3];
@@ -1495,6 +1824,12 @@ void emumgr_menu(gbuffer_t fb) {
 
           switch (save_state_handler(filename)) {
             case SUCCESS:
+              strcpy(filename,  SAVESTATE_DIRECTORY);
+              strcat(filename, Memory.ROMName);
+              itoa(sub_choice + 1, slot_num, 10);
+              strcat(filename, slot_num);
+              strcat(filename, ".img");
+              screenshot_saver(filename, fb_saved);
               sd_deinit();
               message(str_gamestate_saved, true, MESSAGE_DELAY_SHORT, fb_saved);
               goto leave;
@@ -1509,6 +1844,7 @@ void emumgr_menu(gbuffer_t fb) {
             default:
               break;
           }
+
         }
           
         break;

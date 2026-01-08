@@ -40,6 +40,7 @@
 #define STR_READING_ROM "beim Lesen der SD-Karte"
 #define STR_LOADING "Laden..."
 #define STR_GO_BACK "\x3c""  Zur""\xfc""ck"
+#define STR_BACK "Zur""\xfc""ck"
 #define STR_GAMESTATE_SAVED "Spielstand gesichert"
 #define STR_ERROR "Fehler"
 #define STR_ERR_OPEN_FILE "Datei kann nicht""\0""ge""\xf6""ffnet werden"

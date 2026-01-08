@@ -26,6 +26,8 @@
 
 uint32_t bat_vol;
 
+#define BAT_AVG_WIN (50)
+
 void pwr_sd_sply(bool state) {
   if (!state) {  
     gpio_set_dir(PIN_SD_DET, GPIO_OUT);
@@ -44,7 +46,7 @@ uint16_t pwr_read_bat_vol() {
 
 // Read raw battery and average values
 int pwr_get_bat_vol() {
-  bat_vol = (bat_vol * 100 + pwr_read_bat_vol()) / (100 + 1);
+  bat_vol = (bat_vol * BAT_AVG_WIN + pwr_read_bat_vol()) / (BAT_AVG_WIN + 1);
   return bat_vol;
 }
 
@@ -84,13 +86,20 @@ int pwr_get_bat_level(int granularity) {
   //if (pwr_get_source() == PWR_ON_GRD)
     // some other logic
 
-  int8_t level;
+  int level;
 
+  if (level > 100)
+    level = 100;
+
+  if (level < 0)
+    level = 0;
+  
   level = (pwr_get_bat_vol() - PWR_BAT_MIN_VOL) * 100 / (PWR_BAT_MAX_VOL - PWR_BAT_MIN_VOL);
 
   // return level in steps of "granularity", because the voltage divider
   // will otherwise deliver very inaccurate data
-  level = (level / (100 / granularity) + 1) * 100 / granularity;
+  level += 100 / (granularity - 1);
+  level = (level / (100 / (granularity - 1))) * 100 / (granularity - 1);
 
   if (level > 100)
     level = 100;
