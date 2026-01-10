@@ -41,7 +41,7 @@
 #include "../assets/scroll_bar.h"
 #include "../assets/battery.h"
 #include "../assets/thumbnail.h"
-#include <fonts/fontfiles/picoheld_pixel_6x7.h>
+#include <fonts/fontfiles/picoheld_pixel_5x7_rosa.h>
 
 extern "C" {
 /* Snes9x */
@@ -100,7 +100,7 @@ int supply_type_last = -1;
 
 /* ====================================================== end variables ====================================================== */
 
-#define MENU_FONT picoheld_pixel_6x7
+#define MENU_FONT picoheld_pixel_5x7_rosa
 
 #define MENU_FONT_SHADOW_COLOR rgb_col_888_565(30, 30, 30)
 #define MENU_FONT_SELECTED_COLOR rgb_col_888_565(230, 0, 200)
@@ -110,14 +110,16 @@ int supply_type_last = -1;
 #define MENU_REPEAT_START (500)
 #define MENU_REPEAT_DELAY (100)
 
-#define MENU_MIN_X_CLEAR (40)
+// min clearance from screen border
+#define MENU_MIN_X_CLEAR (30)  
 #define MENU_MIN_Y_CLEAR (20)
 
-#define MENU_MAX_DIR_ITEMS (100)
+#define MESSAGE_DELAY_LONG (2000)
+#define MESSAGE_DELAY_SHORT (1000)
+#define MESSAGE_DELAY_BLINKOFANEYE (750)
 
-#define MESSAGE_DELAY_SHORT (2000)
-
-#define DIRECTORY_BUFFER_SIZE (MENU_MAX_DIR_ITEMS * (256 + 4))
+#define DIRECTORY_MAX_ITEMS (100)
+#define DIRECTORY_BUFFER_SIZE (DIRECTORY_MAX_ITEMS * (256 + 4))
 
 #define DRAW_BATTERY_X (219)
 #define DRAW_BATTERY_Y (5)
@@ -135,11 +137,11 @@ int supply_type_last = -1;
 #define ERR_LOAD_ROM -6
 #define ERR_PSRAM -7
 #define ERR_ABORTED - 8
+#define ERR_NO_ROMS_FOUND -9
 
 #define MENU_LST "\xff"
-
-const char nullstring = 0;
 const char terminatorstring = 255;
+const char nullstring = 0;
 
 const char str_gamestate_saved[] = { STR_GAMESTATE_SAVED"\0"\
                                      MENU_LST };
@@ -157,32 +159,51 @@ const char str_err_open_file[] = { STR_ERROR"\0"\
 
 const char str_err_open_dir[] = { STR_ERROR"\0"\
                                   STR_ERR_OPEN_DIR"\0"\
+                                   " \0"\
+                                  ROM_DIRECTORY"\0"\
                                   MENU_LST };
 
 const char str_err_read_file[] = { STR_ERROR"\0"\
                                    STR_ERR_OPEN_FILE"\0"\
                                    MENU_LST };
 
+const char str_err_no_roms_found[] = { STR_ERROR"\0"\
+                                       STR_ERR_NO_ROMS_FOUND"\0"\
+                                       " \0"\
+                                       ROM_DIRECTORY"\0"\
+                                       MENU_LST };
+                                   
 const char str_err_write_file[] = { STR_ERROR"\0"\
                                     STR_ERR_OPEN_FILE"\0"\
                                     MENU_LST };
 
 const char main_menu_items[] = { STR_MAIN_TITLE"\0"\
 					 									     STR_LAUNCH"\0"\
-                                 STR_LOAD"\0"\
-                                 STR_SAVE"\0"\
+                                 STR_LOAD_STATE"\0"\
+                                 STR_SAVE_STATE"\0"\
                                  STR_SOUND"\0"\
                                  STR_BRIGHTNESS"\0"\
                                  STR_SEL_ROM"\0"\
                                  STR_OPTIONS"\0"\
+                                 STR_ABOUT"\0"\
                                  STR_SHUTDOWN"\0"\
                                  MENU_LST };
+
+const char settings_menu_items[] = { STR_OPTIONS"\0"\
+					 									         STR_FPS " " STR_TOGGLE "\0"\
+                                     STR_BAT " " STR_TOGGLE "\0"\
+                                     STR_GO_BACK"\0"\
+                                     MENU_LST };
 
 const char save_menu[] = { STR_SAVE_STATE"\0"\
                            MENU_LST };
 
 const char load_menu[] = { STR_LOAD_STATE"\0"\
                            MENU_LST };
+
+const char about[] = { STR_ABOUT_TEXT"\0"\
+                       STR_VERSION "_" __DATE__ "_" __TIME__"\0"\
+                       MENU_LST };
 
 const char str_err_rom[] = {  STR_ERROR"\0"\
                               STR_ERR_ROM"\0"\
@@ -205,7 +226,7 @@ const char str_go_back[] = {  STR_GO_BACK"\0"\
 const char str_back[] = {  STR_BACK"\0"\
                               MENU_LST };
 
-const char str_load_game_first[] = { STR_LOAD_GAME_FIRST"\0"\
+const char str_load_game_first[] = { STR_ERR_GAME_FIRST"\0"\
                                      MENU_LST };
 
 int stars_init() {
@@ -795,7 +816,7 @@ int get_directory(const char *path, char* buffer) {
     if (res == FR_OK) {
         for (;;) {
             res = f_readdir(&dir, &fno);           /* Read a directory item */
-            if ((fno.fname[0] == 0) || (item_cnt >= MENU_MAX_DIR_ITEMS)) break;          /* Error or end of dir/RAM */
+            if ((fno.fname[0] == 0) || (item_cnt >= DIRECTORY_MAX_ITEMS)) break;          /* Error or end of dir/RAM */
             if (!(fno.fattrib & AM_DIR)) {
                 strcpy(&buffer[buf_pos], fno.fname);
                 buf_pos += strlen(fno.fname) + 1;
@@ -1742,6 +1763,12 @@ int menu_loadfile(gbuffer_t fb) {
     goto bailout;
   }
 
+  printf("%d roms found", get_item_cnt(buffer) - 1);
+  if (get_item_cnt(buffer) == 2) {  // 2 - caption - go_back
+    ret = ERR_NO_ROMS_FOUND;
+    goto bailout;
+  }
+
   // add go back at bottom of list
   buf_tmp = get_item(get_item_cnt(buffer) - 1, buffer);
   strcpy(&buf_tmp[strlen(buf_tmp) + 1], str_go_back);
@@ -1792,13 +1819,18 @@ int menu_loadfile(gbuffer_t fb) {
 }
 
 void emumgr_menu(gbuffer_t fb) {
-  if (menu_first_run)
+  if (menu_first_run) {
+    // TODO: fixme
+    emulator_state.show_bat = true;
+    emulator_state.show_fps = false;
+
     stars_init();
+  }
 
   gbuffer_t fb_saved;
   int res;
   int main_choice, sub_choice;
-  char* filename = (char*) sfe_mem_malloc(520);
+  char* char_tmp = (char*) sfe_mem_malloc(520);
 
   if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS) {
     em_printf("Error: Cannot allocate PSRAM\n");
@@ -1812,10 +1844,6 @@ void emumgr_menu(gbuffer_t fb) {
   sd_init();
   //if (!sd_init())
   //  message(str_err_sd_mount, true, 1000, fb_saved);
-
-  // TODO: fixme
-  emulator_state.show_bat = true;
-  emulator_state.show_fps = true;
 
   while (1) {
     main_choice = selection_menu((char*) main_menu_items, true, false, 0, fb_saved);
@@ -1831,27 +1859,27 @@ void emumgr_menu(gbuffer_t fb) {
       
           goto leave;
         } else {
-              message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
+              message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
         }
         
         break;
       case 1:
         if (!Memory.ROM) {
-          message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
+          message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }
         if (!sd_init()) {
           message(str_err_sd_mount, true, 0, fb_saved);
           break;
         }
-        sub_choice = savestate_selector(load_menu, filename, fb_saved);
+        sub_choice = savestate_selector(load_menu, char_tmp, fb_saved);
         if ((sub_choice >= 0) && (sub_choice < MAX_NUM_SAVESTATES)) {
-          strcpy(filename,  SAVESTATE_DIRECTORY);
-          strcat(filename, Memory.ROMName);
+          strcpy(char_tmp,  SAVESTATE_DIRECTORY);
+          strcat(char_tmp, Memory.ROMName);
           char slot_num[3];
           itoa(sub_choice + 1, slot_num, 10);
-          strcat(filename, slot_num);
-          switch (load_state_handler(filename)) {
+          strcat(char_tmp, slot_num);
+          switch (load_state_handler(char_tmp)) {
             case SUCCESS:
               goto leave;
             case ERR_SD_OPEN_FIL:
@@ -1869,32 +1897,33 @@ void emumgr_menu(gbuffer_t fb) {
         break;
       case 2:
         if (!Memory.ROM) {
-          message(str_load_game_first, true, MESSAGE_DELAY_SHORT, fb_saved);
+          message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }
         if (!sd_init()) {
           message(str_err_sd_mount, true, 0, fb_saved);
           break;
         }
-        sub_choice = savestate_selector(save_menu, filename, fb_saved);
+        strcpy(char_tmp,  SAVESTATE_DIRECTORY);
+        f_mkdir(char_tmp);
+        sub_choice = savestate_selector(save_menu, char_tmp, fb_saved);
         //selection_menu((char*) save_menu_items, true, false, 0, fb_saved);
         if ((sub_choice >= 0) && (sub_choice < MAX_NUM_SAVESTATES)) {
-          strcpy(filename,  SAVESTATE_DIRECTORY);
-          strcat(filename, Memory.ROMName);
+          strcat(char_tmp, Memory.ROMName);
           char slot_num[3];
           itoa(sub_choice + 1, slot_num, 10);
-          strcat(filename, slot_num);
+          strcat(char_tmp, slot_num);
 
-          switch (save_state_handler(filename)) {
+          switch (save_state_handler(char_tmp)) {
             case SUCCESS:
-              strcpy(filename,  SAVESTATE_DIRECTORY);
-              strcat(filename, Memory.ROMName);
+              strcpy(char_tmp,  SAVESTATE_DIRECTORY);
+              strcat(char_tmp, Memory.ROMName);
               itoa(sub_choice + 1, slot_num, 10);
-              strcat(filename, slot_num);
-              strcat(filename, ".img");
-              screenshot_saver(filename, fb_saved);
+              strcat(char_tmp, slot_num);
+              strcat(char_tmp, ".img");
+              screenshot_saver(char_tmp, fb_saved);
               sd_deinit();
-              message(str_gamestate_saved, true, MESSAGE_DELAY_SHORT, fb_saved);
+              message(str_gamestate_saved, true, MESSAGE_DELAY_BLINKOFANEYE, fb_saved);
               goto leave;
             case ERR_SD_OPEN_FIL:
               sd_deinit();
@@ -1959,11 +1988,52 @@ void emumgr_menu(gbuffer_t fb) {
             message(str_err_read_file, true, 0, fb_saved);
             em_printf("error loading rom\n");
             break;
+          case ERR_NO_ROMS_FOUND:
+            message(str_err_no_roms_found, true, 0, fb_saved);
+            break;
           default:
             break;
         }
         break;
+      case 6:
+        sub_choice = selection_menu((char*) settings_menu_items, true, false, 0, fb_saved);
+
+        switch (sub_choice) {
+          case 0:
+            emulator_state.show_fps = !emulator_state.show_fps;
+
+            strcpy(char_tmp, STR_FPS);
+            strcat(char_tmp, ": ");
+            if (emulator_state.show_fps)
+              strcat(char_tmp, STR_ON);
+            else
+              strcat(char_tmp, STR_OFF);
+            char_tmp[strlen(char_tmp) + 2] = terminatorstring;
+
+            message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
+            break;
+          case 1: 
+            emulator_state.show_bat = !emulator_state.show_bat;
+
+            strcpy(char_tmp, STR_BAT);
+            strcat(char_tmp, ": ");
+            if (emulator_state.show_bat)
+              strcat(char_tmp, STR_ON);
+            else
+              strcat(char_tmp, STR_OFF);
+            char_tmp[strlen(char_tmp) + 2] = terminatorstring;
+
+            message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
+
+            break;
+          default:
+            break;
+        }
+        break; 
       case 7:
+        message(about, true, 0, fb_saved);
+        break;  
+      case 8:
         pwr_shutdown();
         break;  
       default:
@@ -1979,6 +2049,9 @@ leave:
 
   if (gbuf_get_dat_ptr(fb_saved))
     sfe_mem_free((void*) gbuf_get_dat_ptr(fb_saved));
+
+  if (char_tmp)
+    sfe_mem_free((void*) char_tmp);
 
   if (menu_first_run) {
     menu_first_run = 0;

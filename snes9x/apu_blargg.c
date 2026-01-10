@@ -61,7 +61,7 @@ Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA */
 
 /* Gaussian interpolation */
 
-static int16_t gauss [512] =
+static int16_t const gauss [512] =
 {
 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
 1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   2,   2,   2,   2,   2,
@@ -3018,7 +3018,7 @@ static void resampler_new(int32_t num_samples)
    int32_t new_size = num_samples << 1;
 
    rb_buffer_size = new_size;
-   rb_buffer = (uint8_t *)malloc(rb_buffer_size);
+   rb_buffer = (uint8_t *) sfe_mem_malloc(rb_buffer_size);
    memset (rb_buffer, 0, rb_buffer_size);
 
    rb_size = 0;
@@ -3052,9 +3052,9 @@ static INLINE bool resampler_push(int16_t *src, int32_t num_samples)
 static INLINE void resampler_resize (int32_t num_samples)
 {
    (void) num_samples;
-   free(rb_buffer);
+   sfe_mem_free(rb_buffer);
    rb_buffer_size = rb_size;
-   rb_buffer = (uint8_t *)malloc(rb_buffer_size);
+   rb_buffer = (uint8_t *) sfe_mem_malloc(rb_buffer_size);
    memset (rb_buffer, 0, rb_buffer_size);
 
    rb_size = 0;
@@ -3192,8 +3192,8 @@ bool S9xInitSound (int32_t buffer_ms, int32_t lag_ms)
    buffer_size <<= 1;
 
    if (landing_buffer)
-      free(landing_buffer);
-   landing_buffer = (int16_t*)malloc(buffer_size * 2);
+      sfe_mem_free(landing_buffer);
+   landing_buffer = (int16_t*) sfe_mem_malloc(buffer_size * 2);
    if (!landing_buffer)
       return (false);
 
@@ -3321,13 +3321,13 @@ void S9xDeinitAPU()
 {
    if (resampler)
    {
-      free(rb_buffer);
+      sfe_mem_free(rb_buffer);
       resampler = false;
    }
 
    if (landing_buffer)
    {
-      free(landing_buffer);
+      sfe_mem_free(landing_buffer);
       landing_buffer = NULL;
    }
 }

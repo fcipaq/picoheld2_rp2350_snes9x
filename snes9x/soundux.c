@@ -1015,8 +1015,8 @@ bool S9xInitSound(int32_t buffer_ms, int32_t lag_ms)
    size_t sample_rate = Settings.SoundPlaybackRate * 2;
    size_t sample_count = (buffer_ms * sample_rate / 1000);
 
-   if (sample_count < sample_rate / 50)
-      sample_count = sample_rate / 50;
+   if (sample_count < sample_rate / 45)  // add a little margin of approx. 10%
+      sample_count = sample_rate / 45;  
 
    wave = sfe_mem_calloc(sample_count, sizeof(wave[0]));
    MixBuffer = sfe_mem_calloc(sample_count, sizeof(MixBuffer[0]));

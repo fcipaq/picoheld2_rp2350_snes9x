@@ -59,7 +59,7 @@ int32_t HDMA_ModeByteCounts [8] =
 
 uint16_t DirectColourMaps [8][256];
 
-int32_t NoiseFreq [32] =
+int32_t const NoiseFreq [32] =
 {
    0, 16, 21, 25, 31, 42, 50, 63, 84, 100, 125, 167, 200, 250, 333,
    400, 500, 667, 800, 1000, 1300, 1600, 2000, 2700, 3200, 4000,
@@ -75,7 +75,7 @@ uint8_t APUROM [64] =
 };
 
 /* Raw SPC700 instruction cycle lengths */
-uint8_t S9xAPUCycleLengths [256] =
+uint8_t const S9xAPUCycleLengths [256] =
 {
    /*        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, a, b, c, d, e,  f, */
    /* 00 */  2, 8, 4, 5, 3, 4, 3, 6, 2, 6, 5, 4, 5, 4, 6,  8,
@@ -120,7 +120,7 @@ uint8_t S9xAPUCycles [256] =
 };
 
 
-uint8_t mul_brightness [16][32] =
+uint8_t const mul_brightness [16][32] =
 {
    {
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
