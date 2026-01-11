@@ -38,5 +38,6 @@ int pwr_get_bat_level(int granularity);
 int pwr_get_bat_vol();
 void pwr_shutdown();
 void pwr_sd_sply(bool state);
+bool pwr_sd_det();
 
 #endif //POWER_H

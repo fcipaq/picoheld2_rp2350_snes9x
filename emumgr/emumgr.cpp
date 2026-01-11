@@ -37,10 +37,10 @@
 //#include "emumgr_lang_en.h"
 
 // assets
-#include "../assets/rect.h"
-#include "../assets/scroll_bar.h"
-#include "../assets/battery.h"
-#include "../assets/thumbnail.h"
+#include "assets/rect.h"
+#include "assets/scroll_bar.h"
+#include "assets/battery.h"
+#include "assets/thumbnail.h"
 #include <fonts/fontfiles/picoheld_pixel_5x7_rosa.h>
 
 extern "C" {
@@ -84,6 +84,9 @@ bool m_sd_init = false;
 emulator_state_t emulator_state;
 void* psram_rom;
 int translucency = 50;
+uint32_t brownout_det_timer = 0;
+bool brownout_det = false;
+bool in_menu = false;
 
 // starfield
 #define NUM_STARS (50)
@@ -123,6 +126,8 @@ int supply_type_last = -1;
 
 #define DRAW_BATTERY_X (219)
 #define DRAW_BATTERY_Y (5)
+#define BAT_CRIT_BLINK_DURATION (500)
+#define BROWNOUT_DELAY (120000)  // time to shutdown system
 
 #define SAVESTATE_DIRECTORY "/roms/snes/save/"
 #define ROM_DIRECTORY "/roms/snes/"
@@ -192,6 +197,7 @@ const char main_menu_items[] = { STR_MAIN_TITLE"\0"\
 const char settings_menu_items[] = { STR_OPTIONS"\0"\
 					 									         STR_FPS " " STR_TOGGLE "\0"\
                                      STR_BAT " " STR_TOGGLE "\0"\
+                                     STR_FRAMEDROP_MODE "\0"\
                                      STR_GO_BACK"\0"\
                                      MENU_LST };
 
@@ -289,46 +295,61 @@ void stars_draw(gbuffer_t fb) {
   }
 }
 
-void draw_battery(int x, int y, int percent, gbuffer_t fb_back) {
-
-    if (gbuf_get_dat_ptr(draw_battery_gbuf) == NULL) {
-      if (gbuf_create(&draw_battery_gbuf, gbuf_get_width(battery_normal_image), gbuf_get_height(battery_normal_image), (void*) sfe_mem_malloc(gbuf_get_width(battery_normal_image) * gbuf_get_height(battery_normal_image) * 2)) != BUF_SUCCESS) {
-        em_printf("Error: Cannot allocate PSRAM\n");
-        return;
-      }       
+void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
+  
+  if (pwr_get_source() != PWR_ON_GRD) {
+      if ((pwr_get_bat_vol() <= (PWR_BAT_MIN_VOL + 50)) && !brownout_det) {
+      brownout_det_timer = millis();
+      brownout_det = true;
     }
 
-    int level = percent / 33;
-    
-    if (level > 3)
-      level = 3;
+    if (brownout_det && (millis() - brownout_det_timer > BROWNOUT_DELAY))
+      pwr_shutdown();
 
-    if ((battery_last_level != level) || pwr_get_source() != supply_type_last) {
-      draw_rect_fill(0, 0, gbuf_get_width(draw_battery_gbuf), gbuf_get_height(draw_battery_gbuf), 0xf81f, draw_battery_gbuf);
-      battery_last_level = level;
-      supply_type_last = pwr_get_source();
-      if (pwr_get_source() == PWR_ON_GRD) {
-        blit_buf(0, 0, 0xf81f, battery_normal_image, draw_battery_gbuf);
-        blit_buf(5, 3, 0xf81f, flash_image, draw_battery_gbuf);
-      } else {
-        if (level) {
-          blit_buf(0, 0, 0xf81f, battery_normal_image, draw_battery_gbuf);
-          for (int i = 0; i < level; i++) {
-            draw_rect_fill(17 - i * 5, 3, 17 - i * 5 - 3, 8, rgb_col_888_565(200, 200, 200), draw_battery_gbuf);
-          }
-        } else {
-          blit_buf(0, 0, 0xf81f, battery_empty_image, draw_battery_gbuf);
-        }
-      }
-
-    } else {
-#ifdef ENABLE_PSRAM_FB
+    if (brownout_det && (((millis() - brownout_det_timer ) % BAT_CRIT_BLINK_DURATION) > (BAT_CRIT_BLINK_DURATION / 2)))
       return;
-#endif      
+  } else {
+    brownout_det = false;
+  }
+
+  if (!emulator_state.show_bat && !brownout_det && !in_menu)
+    return;
+
+  if (gbuf_get_dat_ptr(draw_battery_gbuf) == NULL) {
+    if (gbuf_create(&draw_battery_gbuf, gbuf_get_width(battery_normal_image), gbuf_get_height(battery_normal_image), (void*) sfe_mem_malloc(gbuf_get_width(battery_normal_image) * gbuf_get_height(battery_normal_image) * 2)) != BUF_SUCCESS) {
+      em_printf("Error: Cannot allocate PSRAM\n");
+      return;
+    }       
+  }
+
+  if (level > 3)
+    level = 3;
+
+  if ((battery_last_level != level) || pwr_get_source() != supply_type_last) {
+    draw_rect_fill(0, 0, gbuf_get_width(draw_battery_gbuf), gbuf_get_height(draw_battery_gbuf), 0xf81f, draw_battery_gbuf);
+    battery_last_level = level;
+    supply_type_last = pwr_get_source();
+    if (pwr_get_source() == PWR_ON_GRD) {
+      blit_buf(0, 0, 0xf81f, battery_normal_image, draw_battery_gbuf);
+      blit_buf(5, 3, 0xf81f, flash_image, draw_battery_gbuf);
+    } else {
+      if (level) {
+        blit_buf(0, 0, 0xf81f, battery_normal_image, draw_battery_gbuf);
+        for (int i = 0; i < level; i++) {
+          draw_rect_fill(17 - i * 5, 3, 17 - i * 5 - 3, 8, rgb_col_888_565(200, 200, 200), draw_battery_gbuf);
+        }
+      } else {
+        blit_buf(0, 0, 0xf81f, battery_empty_image, draw_battery_gbuf);
+      }
     }
 
-    blit_buf_blend(x, y, 0xf81f, 40, draw_battery_gbuf, fb_back);
+  } else {
+#ifdef ENABLE_PSRAM_FB
+    return;
+#endif      
+  }
 
+  blit_buf_blend(x, y, 0xf81f, 40, draw_battery_gbuf, fb_back);
 }
 
 int sd_deinit() {
@@ -345,6 +366,15 @@ int sd_deinit() {
 }
 
 int sd_init() {
+#if 0
+  if (!pwr_sd_det()) {
+    printf("SD det is: %d\n", pwr_sd_det() ? 1 : 0);
+    // sd has been removed by user
+    m_sd_init = false;
+    return false;
+  }
+#endif
+
   if (m_sd_init)
     return true;
 
@@ -372,6 +402,7 @@ int sd_init() {
     return false;
   }
 
+#if 0
   for (int i = 0; i < 2; i++) {
     fr = f_mount(&fs_handle, "", 1);
 
@@ -385,6 +416,9 @@ int sd_init() {
     sleep_ms(500);
     pico_fatfs_reboot_spi();
   }
+#else
+  fr = f_mount(&fs_handle, "", 1);
+#endif
 
   if (fr != FR_OK)
     return false;
@@ -414,7 +448,7 @@ int read_image_to_gbuf(char* filename, gbuffer_t fb) {
 
   while (unread_bytes && (pos < gbuf_get_width(fb) * gbuf_get_height(fb) * 2) ) {
     UINT br;
-    fr = f_read (&fil, buf, 2048 /* read len */, &br);
+    fr = f_read(&fil, buf, 2048 /* read len */, &br);
     buf += br;
     unread_bytes -= br;
     pos += br;
@@ -630,12 +664,12 @@ int load_state_handler(char *filename)
   FIL fil;
   FRESULT fr;
 
-  em_printf("Loadstate handler called...\n\n");
+  em_printf("Loadstate handler called. File: %s..\n", filename);
 
   fr = f_open(&fil, filename, FA_READ);
 
   if (fr != FR_OK) {
-    em_printf("loadstate handler: open file failed: %d\n", (int) fr);
+    em_printf("loadstate handler: open failed: %d\n", (int) fr);
     return ERR_SD_OPEN_FIL;
   }
 
@@ -646,63 +680,63 @@ int load_state_handler(char *filename)
   // At this point we can't go back and a failure will corrupt the state anyway
   em_printf("Now reading to memory.\n");
 
-  fr = f_read (&fil, (uint8_t*) &CPU, sizeof(CPU), &br);
+  fr = f_read(&fil, (uint8_t*) &CPU, sizeof(CPU), &br);
   if ((fr != FR_OK) || (br != sizeof(CPU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) &ICPU, sizeof(ICPU), &br);
+  fr = f_read(&fil, (uint8_t*) &ICPU, sizeof(ICPU), &br);
   if ((fr != FR_OK) || (br != sizeof(ICPU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) &PPU, sizeof(PPU), &br);
+  fr = f_read(&fil, (uint8_t*) &PPU, sizeof(PPU), &br);
   if ((fr != FR_OK) || (br != sizeof(PPU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) &DMA, sizeof(DMA), &br);
+  fr = f_read(&fil, (uint8_t*) &DMA, sizeof(DMA), &br);
   if ((fr != FR_OK) || (br != sizeof(DMA))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) Memory.VRAM, VRAM_SIZE, &br);
+  fr = f_read(&fil, (uint8_t*) Memory.VRAM, VRAM_SIZE, &br);
   if ((fr != FR_OK) || (br != VRAM_SIZE)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) Memory.RAM, RAM_SIZE, &br);
+  fr = f_read(&fil, (uint8_t*) Memory.RAM, RAM_SIZE, &br);
   if ((fr != FR_OK) || (br != RAM_SIZE)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) Memory.SRAM, SRAM_SIZE, &br);
+  fr = f_read(&fil, (uint8_t*) Memory.SRAM, SRAM_SIZE, &br);
   if ((fr != FR_OK) || (br != SRAM_SIZE)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &br);
+  fr = f_read(&fil, (uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &br);
   if ((fr != FR_OK) || (br != FILLRAM_SIZE)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) &APU, sizeof(APU), &br);
+  fr = f_read(&fil, (uint8_t*) &APU, sizeof(APU), &br);
   if ((fr != FR_OK) || (br != sizeof(APU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) &IAPU, sizeof(IAPU), &br);
+  fr = f_read(&fil, (uint8_t*) &IAPU, sizeof(IAPU), &br);
   if ((fr != FR_OK) || (br != sizeof(IAPU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) IAPU.RAM, 0x10000, &br);
+  fr = f_read(&fil, (uint8_t*) IAPU.RAM, 0x10000, &br);
   if ((fr != FR_OK) || (br != 0x10000)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read (&fil, (uint8_t*) &SoundData, sizeof(SoundData), &br);
-  if (br != sizeof(SoundData)) {
+  fr = f_read(&fil, (uint8_t*) &SoundData, sizeof(SoundData), &br);
+  if ((fr != FR_OK) || br != sizeof(SoundData)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
@@ -919,6 +953,7 @@ int progress_bar(const char* caption, int value, gbuffer_t fb) {
   blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_right_full_image, fb_back);
 
   draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
+
   lcd.request_pageflip();
 
   return 0;
@@ -963,7 +998,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
 
   while (unread_bytes) {
     UINT bytes_read;
-    fr = f_read (&fil, buf, 2048 /* read len */, &bytes_read);
+    fr = f_read(&fil, buf, 2048 /* read len */, &bytes_read);
     buf += bytes_read;
     unread_bytes -= bytes_read;
     if ((fr != FR_OK) && unread_bytes) {
@@ -1028,6 +1063,34 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
     if (menu_first_run)
       stars_draw(fb_back);
 
+    draw_rectangle(menu_offset_x - menu_border_width,
+                   menu_offset_y - menu_border_height,
+                   menu_width + menu_border_width * 2,
+                   menu_height + menu_border_height * 2,
+                   translucency,
+                   fb_back);
+
+    font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - font_offset_y, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
+    font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - font_offset_y, menu_font_caption_color, (char*) caption, menu_font, fb_back);
+
+    int bar_start = menu_offset_x + 10 + gbuf_get_width(bar_left_full_image);
+    int bar_end = menu_offset_x + 10 + menu_width - 20 - gbuf_get_width(bar_right_full_image);
+    
+    for (int i = 0; i < bar_end - bar_start; i++) {
+      if (i * 100 / (bar_end - bar_start) > value)
+        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_mid_empty_image, fb_back);  
+      else
+        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_mid_full_image, fb_back);  
+    }
+
+    blit_buf(menu_offset_x + 10 + (menu_width - 20 - gbuf_get_width(bar_right_full_image)), gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_right_empty_image, fb_back);
+    blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_left_full_image, fb_back);
+    blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_right_full_image, fb_back);
+
+    draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
+    
+    lcd.request_pageflip();
+
     ctrl_button_state_update();
 
     if (first_run && !ctrl_is_pressed(BUTTON_ANY)) {
@@ -1080,32 +1143,6 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
       }
     }
 
-    draw_rectangle(menu_offset_x - menu_border_width,
-                   menu_offset_y - menu_border_height,
-                   menu_width + menu_border_width * 2,
-                   menu_height + menu_border_height * 2,
-                   translucency,
-                   fb_back);
-
-    font_write_string_centered(1 + gbuf_get_width(fb_back) / 2 , 1 + gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - font_offset_y, menu_font_shadow_color, (char*) caption, menu_font, fb_back);
-    font_write_string_centered(gbuf_get_width(fb_back) / 2 , gbuf_get_height(fb_back) / 2 - font_get_height(menu_font) - font_offset_y, menu_font_caption_color, (char*) caption, menu_font, fb_back);
-
-    int bar_start = menu_offset_x + 10 + gbuf_get_width(bar_left_full_image);
-    int bar_end = menu_offset_x + 10 + menu_width - 20 - gbuf_get_width(bar_right_full_image);
-    
-    for (int i = 0; i < bar_end - bar_start; i++) {
-      if (i * 100 / (bar_end - bar_start) > value)
-        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_mid_empty_image, fb_back);  
-      else
-        blit_buf(bar_start + i, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_mid_full_image, fb_back);  
-    }
-
-    blit_buf(menu_offset_x + 10 + (menu_width - 20 - gbuf_get_width(bar_right_full_image)), gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_right_empty_image, fb_back);
-    blit_buf(menu_offset_x + 10, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_left_full_image, fb_back);
-    blit_buf(menu_offset_x + 10 + gbuf_get_width(bar_right_full_image) + (menu_width - 20 - 2 * gbuf_get_width(bar_right_full_image)) * value / 100, gbuf_get_height(fb_back) / 2 + bar_offset_y, 0xf81f, bar_right_full_image, fb_back);
-
-    draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
-    lcd.request_pageflip();
   }
 
 }
@@ -1393,6 +1430,10 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, int delay,
 
     } */
 
+    draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
+    
+    lcd.request_pageflip();
+
     ctrl_button_state_update();
 
     if (first_run && buttons_locked && !ctrl_is_pressed(BUTTON_ANY)) {
@@ -1447,15 +1488,13 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, int delay,
       }
     }
 
-    draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
-    lcd.request_pageflip();
   }
 
 leave:
 
   return cur_itm;
 
-}
+}  // selection_menu
 
 void message(const char* item_list, bool centered, uint32_t delay, gbuffer_t fb) {
   selection_menu((char*) item_list, centered, true, delay, fb);
@@ -1617,6 +1656,9 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
                     menu_font, fb_back);
     }
 
+    draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
+    lcd.request_pageflip();
+
     ctrl_button_state_update();
 
     if (first_run && buttons_locked && !ctrl_is_pressed(BUTTON_ANY)) {
@@ -1661,8 +1703,6 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
       }
     }
 
-    draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
-    lcd.request_pageflip();
   }
 
 leave:
@@ -1844,6 +1884,7 @@ void emumgr_menu(gbuffer_t fb) {
   sd_init();
   //if (!sd_init())
   //  message(str_err_sd_mount, true, 1000, fb_saved);
+  in_menu = true;
 
   while (1) {
     main_choice = selection_menu((char*) main_menu_items, true, false, 0, fb_saved);
@@ -1907,8 +1948,8 @@ void emumgr_menu(gbuffer_t fb) {
         strcpy(char_tmp,  SAVESTATE_DIRECTORY);
         f_mkdir(char_tmp);
         sub_choice = savestate_selector(save_menu, char_tmp, fb_saved);
-        //selection_menu((char*) save_menu_items, true, false, 0, fb_saved);
         if ((sub_choice >= 0) && (sub_choice < MAX_NUM_SAVESTATES)) {
+          strcpy(char_tmp,  SAVESTATE_DIRECTORY);
           strcat(char_tmp, Memory.ROMName);
           char slot_num[3];
           itoa(sub_choice + 1, slot_num, 10);
@@ -1916,13 +1957,9 @@ void emumgr_menu(gbuffer_t fb) {
 
           switch (save_state_handler(char_tmp)) {
             case SUCCESS:
-              strcpy(char_tmp,  SAVESTATE_DIRECTORY);
-              strcat(char_tmp, Memory.ROMName);
-              itoa(sub_choice + 1, slot_num, 10);
-              strcat(char_tmp, slot_num);
               strcat(char_tmp, ".img");
               screenshot_saver(char_tmp, fb_saved);
-              sd_deinit();
+              //sd_deinit();
               message(str_gamestate_saved, true, MESSAGE_DELAY_BLINKOFANEYE, fb_saved);
               goto leave;
             case ERR_SD_OPEN_FIL:
@@ -2026,6 +2063,19 @@ void emumgr_menu(gbuffer_t fb) {
             message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
 
             break;
+          case 2:
+            emulator_state.manual_framedrop = !emulator_state.manual_framedrop;
+
+            strcpy(char_tmp, STR_FRAMEDROP_MODE);
+            strcat(char_tmp, ": ");
+            if (emulator_state.manual_framedrop)
+              strcat(char_tmp, STR_MANUAL);
+            else
+              strcat(char_tmp, STR_AUTO);           
+            char_tmp[strlen(char_tmp) + 2] = terminatorstring;
+            message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
+
+            break;
           default:
             break;
         }
@@ -2057,5 +2107,7 @@ leave:
     menu_first_run = 0;
     translucency = 90;
   }
+
+  in_menu = false;
 
 }

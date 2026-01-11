@@ -262,7 +262,7 @@ bool S9xInitMemory(void)
    Memory.RAM   = (uint8_t*) sfe_mem_malloc(RAM_SIZE);   //128kB
    Memory.SRAM  = (uint8_t*) sfe_mem_malloc(SRAM_SIZE);  // 128kB
    Memory.VRAM  = (uint8_t*) sfe_mem_malloc(VRAM_SIZE);  // 64kB
-   Memory.FillRAM = (uint8_t*) sfe_mem_malloc(0x8000);  // 32kB
+   Memory.FillRAM = (uint8_t*) sfe_mem_malloc(FILLRAM_SIZE);  // 32kB
 #ifdef DISABLE_TILE_CACHE
    IPPU.TileCache = (uint8_t*) TileCache;// 4kB
 #else

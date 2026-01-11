@@ -1,5 +1,5 @@
 /*
- * emumgr - emulation manager for GWENESIS on the Pico Held
+ * emumgr - emulation manager for GWENESIS on the Pico Held 2
  *
  * Copyright (C) 2023 Daniel Kammer (daniel.kammer@web.de)
  *
@@ -18,18 +18,15 @@
  *
  */
  
-#ifndef EMUMGR_LANG_DE_H
-#define EMUMGR_LANG_DE_H
-
 // Escape Code für Umlaute
 // ä e4, Ä c4
 // Ü dc, ü fc
 // Ö d6, ö f6
 // ß df
 
-#define STR_VERSION "v0.9"
+#pragma once
 
-#define STR_MAIN_TITLE "Pico Held Snes9x"
+#define STR_MAIN_TITLE "Pico Held 2 Snes9x"
 
 #define STR_ENABLED "aktiviert"
 #define STR_DISABLED "deaktiviert"
@@ -37,6 +34,8 @@
 #define STR_ON "Ein"
 #define STR_YES "JA"
 #define STR_NO "NEIN"
+#define STR_AUTO "automatisch"
+#define STR_MANUAL "manuell"
 
 #define STR_LOADING "Laden..."
 #define STR_GO_BACK "\x3c""  Zur""\xfc""ck"
@@ -55,7 +54,6 @@
 #define STR_ERR_NO_ROMS_FOUND "Keine ROMS gefunden:"
 
 #define STR_OPTIONS_MENU "Einstellungen"
-#define STR_SAVE "Spielstand sichern"
 #define STR_SAVE_STATE "Spielstand sichern"
 #define STR_SAVING_GAME_STATE "Sichere Spielstand"
 #define STR_GAMESTATE_SAVED "Spielstand gesichert"
@@ -64,27 +62,25 @@
 #define STR_SOUND "Lautst\xe4rke"
 #define STR_BRIGHTNESS "Helligkeit"
 #define STR_OPTIONS "Einstellungen"
-#define STR_LAUNCH "Spiel starten"
+#define STR_LAUNCH "Emulation starten"
 #define STR_SHUTDOWN "Ausschalten"
 #define STR_ABOUT "Info"
 
 #define STR_BAT "Batterieanzeige"
 #define STR_TOGGLE "umschalten"
 #define STR_FPS "FPS-Anzeige"
+#define STR_FRAMEDROP_MODE "Framedrop-Modus"
 
-
-#define STR_ABOUT_TEXT "Snes9x on the Picoheld 2\0"\
-                       " \0"\
+#define STR_ABOUT_TEXT "Snes9x on the Pico Held 2\0"\
+                       " \0 "\
                        "github.com/fcipaq/snes9x_rp2350\0"\
                        "2026 daniel.kammer@web.de\0"\
-                       " \0"\
-                       "Dank:\0"\
-                       " \0"\
+                       " \0 "\
+                       "Dank:"\
+                       " \0 "\
                        "All Snes9x collaborators\0"\
                        "github.com/ducalex/retro-go\0"\
                        "github.com/elehobica/pico_fatfs\0"\
-                       " \0"\
-                       "Kompilierung: "
-
-
-#endif // EMUMGR_LANG_DE_H
+                       " \0 "\
+                       "Build:"\
+                       //" \0  "

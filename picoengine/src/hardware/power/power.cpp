@@ -25,6 +25,7 @@
 #include <hwcfg.h>
 
 uint32_t bat_vol;
+bool sd_force_off = true;
 
 #define BAT_AVG_WIN (50)
 
@@ -32,10 +33,19 @@ void pwr_sd_sply(bool state) {
   if (!state) {  
     gpio_set_dir(PIN_SD_DET, GPIO_OUT);
     gpio_put(PIN_SD_DET, 1);  // override the HW SD_DET line
+    sd_force_off = true;
   } else {
     gpio_set_dir(PIN_SD_DET, GPIO_IN);
-    gpio_set_pulls(PIN_SD_DET, false, false);  // floating means SD_DET can control the power line
+    gpio_set_pulls(PIN_SD_DET, false, false);  // floating means HW SD_DET can control the power line
+    sd_force_off = false;
   }
+}
+
+bool pwr_sd_det() {
+  if (sd_force_off)
+    return false;
+
+  return gpio_get(PIN_SD_DET);
 }
 
 // Read raw battery voltage (without averaging)
@@ -82,6 +92,10 @@ const unsigned int bat_chg_by_vol[] PROGMEM =
 #endif
 
 // Return battery power level in percent (linear)
+int pwr_get_bat_percent() {
+  return 0;
+}
+
 int pwr_get_bat_level(int granularity) {
   //if (pwr_get_source() == PWR_ON_GRD)
     // some other logic
@@ -98,11 +112,10 @@ int pwr_get_bat_level(int granularity) {
 
   // return level in steps of "granularity", because the voltage divider
   // will otherwise deliver very inaccurate data
-  level += 100 / (granularity - 1);
-  level = (level / (100 / (granularity - 1))) * 100 / (granularity - 1);
+  level /= 100 / granularity;
 
-  if (level > 100)
-    level = 100;
+  if (level > (granularity - 1))
+    level = granularity - 1;
 
   if (level < 0)
     level = 0;
@@ -122,8 +135,11 @@ void pwr_turnon() {
 
 int pwr_init()
 {
+  gpio_init(PIN_PWR_EN);
+  gpio_set_dir(PIN_PWR_EN, GPIO_OUT);
+  pwr_turnon();
+  
   //adc_init();  // already done in ctrl init
-
   adc_gpio_init(PIN_BAT_ADC);
 //  adc_gpio_init(PIN_5V_ADC);
 
@@ -137,9 +153,7 @@ int pwr_init()
   gpio_set_dir(PIN_CHG_STAT, GPIO_IN);
   gpio_set_pulls(PIN_CHG_STAT, true, false);  // pull up
 
-  gpio_init(PIN_PWR_EN);
-  gpio_set_dir(PIN_PWR_EN, GPIO_OUT);
-  pwr_turnon();
+  pwr_sd_sply(0);
  
   return 0;
 }

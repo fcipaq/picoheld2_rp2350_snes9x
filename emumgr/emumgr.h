@@ -21,12 +21,15 @@
 #ifndef EMUMGR_H
 #define EMUMGR_H
 
+#define STR_VERSION "v0.9"
+
 typedef struct {
   volatile int volume;
   volatile bool muted;
   int brightness;
   bool show_bat;
   bool show_fps;
+  bool manual_framedrop;
   bool copy_rom_to_flash;
 } emulator_state_t;
 

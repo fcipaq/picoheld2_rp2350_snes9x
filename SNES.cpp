@@ -58,7 +58,6 @@ extern "C" {
 LCD_DPI lcd = LCD_DPI();
 #endif
 
-
 gbuffer_t fb_back;
 extern emulator_state_t emulator_state;
 
@@ -260,9 +259,6 @@ void setup(void) {
   gpio_set_function(PIN_SD_MISO_TX /* TX */, GPIO_FUNC_UART);
 #endif
 
-  // power up SD card
-  pwr_sd_sply(1);
-
   if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 90000000)) {  //70  // Pimoroni can do 90 - why?
     emu_panic("sfe error\n");
   } else
@@ -280,6 +276,9 @@ void setup(void) {
     emu_panic("picoengine error\n");
 
   sleep_ms(5);  // 750 us required. TODO: investigate why
+
+  // power up SD card
+  pwr_sd_sply(1); 
 
 #ifdef LCD_ENABLE  
   ret = lcd.init(pe_cfg.lcd_num_fb, pe_cfg.lcd_refresh_mode, pe_cfg.lcd_scale);
@@ -299,8 +298,6 @@ void setup(void) {
   if (!test) {
     emu_panic("PSRAM ERROR\n");
   }
-
-  //pwr_shutdown();
 #endif
 
 }
@@ -425,16 +422,15 @@ int main(void)
     while (1) {
       ctrl_button_state_update();
 
-/*
-      if (ctrl_is_pressed(BUTTON_L)) {
-        manual_framedrop = 1;
-        manual_framedrop_cnt = 0;
-      }
-
-      if (ctrl_is_pressed(BUTTON_R)) {
+      if (emulator_state.manual_framedrop) {
+        if (!manual_framedrop) {
+          manual_framedrop = 1;
+          manual_framedrop_cnt = 0;
+        }
+      } else {
         manual_framedrop = 0;
       }
-*/
+
       startTime = micros();
 
       if (IPPU.RenderThisFrame == false)
@@ -454,6 +450,7 @@ int main(void)
       watchdog_disable();
       if (ctrl_is_pressed(BUTTON_SW)) {
         emumgr_menu(fb_back);
+        IPPU.RenderThisFrame == false;
         framedrop_balance = 0;
         fps_timer = millis();
         startTime = micros();
@@ -467,6 +464,7 @@ int main(void)
 
       /* ---------- LCD ------------*/
     if (IPPU.RenderThisFrame) {
+
       if (emulator_state.show_fps) {
         char debug_print[20];
         itoa(target_fps - dfps, debug_print, 10);
@@ -474,11 +472,10 @@ int main(void)
         font_write_string(13, 5, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
       }
 
-      if (emulator_state.show_bat)
 #ifdef ENABLE_PSRAM_FB
-        draw_battery(219, 1, pwr_get_bat_level(4), fb_back_psram);
+      draw_battery(219, 1, pwr_get_bat_level(4), fb_back_psram);
 #else
-        draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
+      draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
 #endif
 
       #if 0 // bat info
@@ -566,6 +563,7 @@ int main(void)
     frame_no++;
     if (millis() - fps_timer > 1000) {
 
+      printf("Bat vol: %d\n", pwr_get_bat_vol());
     #if 0
       printf("Bat vol: %d\n", pwr_get_bat_vol());
       printf("Power src: %d\n", pwr_get_source());
