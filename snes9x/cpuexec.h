@@ -3,14 +3,14 @@
 #ifndef _CPUEXEC_H_
 #define _CPUEXEC_H_
 
-#if 1
+#if 0
 #define SCRATCH_X __attribute__((section(".scratch_x.parity")))
 #define SCRATCH_Y __attribute__((section(".scratch_y.parity")))
 #define NOT_IN_FLASH_FUNC __not_in_flash_func
 #else
 #define SCRATCH_X
 #define SCRATCH_Y
-#define NOT_IN_FLASH_FUNC
+#define NOT_IN_FLASH_FUNC __not_in_flash_func
 #endif
 
 typedef struct

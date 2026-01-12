@@ -31,6 +31,7 @@
 #include "hardware/flash.h"
 #include <hardware/xip_cache.h>
 #include "pico/bootrom.h"
+#include "hardware/watchdog.h"
 
 #include "emumgr.h"
 #include "emumgr_lang_de.h"
@@ -123,6 +124,7 @@ int supply_type_last = -1;
 
 #define DIRECTORY_MAX_ITEMS (100)
 #define DIRECTORY_BUFFER_SIZE (DIRECTORY_MAX_ITEMS * (256 + 4))
+#define FILE_READ_CHUNK_SIZE (2048)
 
 #define DRAW_BATTERY_X (219)
 #define DRAW_BATTERY_Y (5)
@@ -296,7 +298,8 @@ void stars_draw(gbuffer_t fb) {
 }
 
 void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
-  
+  watchdog_update(); 
+
   if (pwr_get_source() != PWR_ON_GRD) {
       if ((pwr_get_bat_vol() <= (PWR_BAT_MIN_VOL + 50)) && !brownout_det) {
       brownout_det_timer = millis();
@@ -444,20 +447,15 @@ int read_image_to_gbuf(char* filename, gbuffer_t fb) {
 
   uint32_t pos = 0;
   uint8_t* buf = (uint8_t*) gbuf_get_dat_ptr(fb);
-  uint32_t unread_bytes = f_size(&fil);
 
-  while (unread_bytes && (pos < gbuf_get_width(fb) * gbuf_get_height(fb) * 2) ) {
-    UINT br;
-    fr = f_read(&fil, buf, 2048 /* read len */, &br);
-    buf += br;
-    unread_bytes -= br;
-    pos += br;
-    if ((fr != FR_OK) && unread_bytes) {
-      em_printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
-      ret = ERR_SD_READING;
-      goto bailout;
-    }    
-  }
+  UINT br;
+  uint32_t size = SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2;
+
+  fr = f_read(&fil, buf, size, &br);
+  if ((fr != FR_OK) && br != size) {
+    em_printf("read error occured, still %d unread bytes. FR is: %d\n", (int) (size - br), fr);
+    ret = ERR_SD_READING;
+  }    
 
   bailout:
 
@@ -573,10 +571,9 @@ int screenshot_saver(char *filename, gbuffer_t fb)
 
   uint32_t filesize = SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2;
   uint32_t pos = 0;
-  uint16_t* buf_src_16 = (uint16_t*) gbuf_get_dat_ptr(fb);
-  uint8_t* buf_dst;
-  uint16_t* buf_dst_16;
-  uint8_t* buf_tmp;
+  uint16_t* buf_src = (uint16_t*) gbuf_get_dat_ptr(fb);
+  uint16_t* buf_dst;
+  uint32_t size;
   
   fr = f_open(&fil, filename, FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
 
@@ -585,64 +582,57 @@ int screenshot_saver(char *filename, gbuffer_t fb)
     return ERR_SD_OPEN_FIL;  // error opening
   }
 
-  buf_dst = (uint8_t*) sfe_mem_malloc(SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2);
+  buf_dst = (uint16_t*) sfe_mem_malloc(SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2);
   if (!buf_dst) {
     ret = ERR_PSRAM;
     goto bailout;
   }
 
-  buf_dst_16 = (uint16_t*) buf_dst;
-  buf_tmp = buf_dst;
-
   #if 0
   // bilinear interpolation
   for (int y = SNES_HEIGHT / 2 - 1; y < SNES_HEIGHT / 2; y++)
     for (int x = SNES_WIDTH / 2 - 1; x < SNES_WIDTH / 2; x++)
-      buf_dst_16[x + y * SNES_WIDTH / 2] = 0;
+      buf_dst[x + y * SNES_WIDTH / 2] = 0;
 
   for (int y = 0; y < SNES_HEIGHT / 2 - 1; y++)
     for (int x = 0; x < SNES_WIDTH / 2 - 1; x++) {
-          uint8_t r1 = (buf_src_16[x * 2 + y * 2 * SNES_WIDTH] >> 11) & 0x1f;
-          uint8_t g1 = (buf_src_16[x * 2 + y * 2 * SNES_WIDTH] >> 5) & 0x3f;
-          uint8_t b1 = (buf_src_16[x * 2 + y * 2 * SNES_WIDTH]) & 0x1f;
-          uint8_t r2 = (buf_src_16[(x + 1) * 2 + y * 2 * SNES_WIDTH] >> 11) & 0x1f;
-          uint8_t g2 = (buf_src_16[(x + 1) * 2 + y * 2 * SNES_WIDTH] >> 5) & 0x3f;
-          uint8_t b2 = (buf_src_16[(x + 1) * 2 + y * 2 * SNES_WIDTH]) & 0x1f;
-          uint8_t r3 = (buf_src_16[x * 2 + (y + 1) * 2 * SNES_WIDTH] >> 11) & 0x1f;
-          uint8_t g3 = (buf_src_16[x * 2 + (y + 1) * 2 * SNES_WIDTH] >> 5) & 0x3f;
-          uint8_t b3 = (buf_src_16[x * 2 + (y + 1) * 2 * SNES_WIDTH]) & 0x1f;
-          uint8_t r4 = (buf_src_16[(x + 1) * 2 + (y + 1) * 2 * SNES_WIDTH] >> 11) & 0x1f;
-          uint8_t g4 = (buf_src_16[(x + 1) * 2 + (y + 1) * 2 * SNES_WIDTH] >> 5) & 0x3f;
-          uint8_t b4 = (buf_src_16[(x + 1) * 2 + (y + 1) * 2 * SNES_WIDTH]) & 0x1f;
+          uint8_t r1 = (buf_src[x * 2 + y * 2 * SNES_WIDTH] >> 11) & 0x1f;
+          uint8_t g1 = (buf_src[x * 2 + y * 2 * SNES_WIDTH] >> 5) & 0x3f;
+          uint8_t b1 = (buf_src[x * 2 + y * 2 * SNES_WIDTH]) & 0x1f;
+          uint8_t r2 = (buf_src[(x + 1) * 2 + y * 2 * SNES_WIDTH] >> 11) & 0x1f;
+          uint8_t g2 = (buf_src[(x + 1) * 2 + y * 2 * SNES_WIDTH] >> 5) & 0x3f;
+          uint8_t b2 = (buf_src[(x + 1) * 2 + y * 2 * SNES_WIDTH]) & 0x1f;
+          uint8_t r3 = (buf_src[x * 2 + (y + 1) * 2 * SNES_WIDTH] >> 11) & 0x1f;
+          uint8_t g3 = (buf_src[x * 2 + (y + 1) * 2 * SNES_WIDTH] >> 5) & 0x3f;
+          uint8_t b3 = (buf_src[x * 2 + (y + 1) * 2 * SNES_WIDTH]) & 0x1f;
+          uint8_t r4 = (buf_src[(x + 1) * 2 + (y + 1) * 2 * SNES_WIDTH] >> 11) & 0x1f;
+          uint8_t g4 = (buf_src[(x + 1) * 2 + (y + 1) * 2 * SNES_WIDTH] >> 5) & 0x3f;
+          uint8_t b4 = (buf_src[(x + 1) * 2 + (y + 1) * 2 * SNES_WIDTH]) & 0x1f;
           uint16_t a = ((r1 + r2 + r3 + r4) / 4) << 11 |
                        ((g1 + g2 + g3 + g4) / 4) << 5 |
                         (b1 + b2 + b3 + b4) / 4;
           // suppress chroma key
           if (a == 0xf81f)
             0xf81e;
-          buf_dst_16[x + y * SNES_WIDTH / 2] = a;
+          buf_dst[x + y * SNES_WIDTH / 2] = a;
   }
   #else
   for (int y = 0; y < SNES_HEIGHT / 2; y++)
     for (int x = 0; x < SNES_WIDTH / 2; x++) {
-      uint16_t a = buf_src_16[x * 2 + y * 2 * SNES_WIDTH];
+      uint16_t a = buf_src[x * 2 + y * 2 * SNES_WIDTH];
       // suppress chroma key
       if (a == 0xf81f)
-        0xf81e;
-      buf_dst_16[x + y * SNES_WIDTH / 2] = a;
+        a = 0xf81e;
+      buf_dst[x + y * SNES_WIDTH / 2] = a;
     }
   #endif
 
-  while (pos < filesize) {
-    UINT bw;
-    fr = f_write(&fil, (void*) buf_tmp, 2048, &bw);
-    buf_tmp += bw;
-    pos += bw;
-    if ((fr != FR_OK) || (bw != 2048)) {
-      em_printf("Error writing screenshot data.\n");
-      ret = ERR_SD_WRITING;
-      goto bailout;
-    }
+  size = SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2;
+  fr = f_write(&fil, (void*) buf_dst, size, &bw);
+  if ((fr != FR_OK) || (bw != size)) {
+    em_printf("Error writing screenshot data.\n");
+    ret = ERR_SD_WRITING;
+    goto bailout;
   }
 
   em_printf("Screenshot saved.\n\n");
@@ -740,6 +730,8 @@ int load_state_handler(char *filename)
     ret = ERR_SD_READING;
     goto bailout;
   }
+
+  S9xLoadState();
 
   em_printf("Game state loaded.\n");
 
@@ -967,6 +959,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
 
   int step = 0;
   int percent = 0; 
+  uint32_t readlen = FILE_READ_CHUNK_SIZE;
 
   fr = f_open(&fil, filename, FA_READ);
 
@@ -998,7 +991,9 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
 
   while (unread_bytes) {
     UINT bytes_read;
-    fr = f_read(&fil, buf, 2048 /* read len */, &bytes_read);
+    if (unread_bytes < readlen)
+      readlen = unread_bytes;
+    fr = f_read(&fil, buf, readlen /* read len */, &bytes_read);
     buf += bytes_read;
     unread_bytes -= bytes_read;
     if ((fr != FR_OK) && unread_bytes) {

@@ -30,6 +30,8 @@ include(pico_sdk_import.cmake)
 
 project(SNES C CXX ASM)
 
+# set(PICO_USE_STACK_GUARDS 1)
+
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
@@ -81,6 +83,9 @@ add_subdirectory(picoengine)
 add_subdirectory(sparkfun_pico)
 add_subdirectory(pico_fatfs)
 add_subdirectory(emumgr)
+
+target_link_options(SNES PRIVATE -Wl,--print-memory-usage)
+target_compile_options(SNES PRIVATE -fstack-usage)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")

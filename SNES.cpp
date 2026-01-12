@@ -418,7 +418,8 @@ int main(void)
   int tainted = 0;
   int untainted = 0;
 #endif
-
+    watchdog_enable(2000, true);
+ 
     while (1) {
       ctrl_button_state_update();
 
@@ -447,7 +448,6 @@ int main(void)
 
       S9xMainLoop();
 
-      watchdog_disable();
       if (ctrl_is_pressed(BUTTON_SW)) {
         emumgr_menu(fb_back);
         IPPU.RenderThisFrame == false;
@@ -455,8 +455,6 @@ int main(void)
         fps_timer = millis();
         startTime = micros();
       }      
-      watchdog_enable(1000, true);
-      watchdog_update(); 
 
 #ifdef AUDIO_ENABLE
       mutex_exit(&audio_generate);
