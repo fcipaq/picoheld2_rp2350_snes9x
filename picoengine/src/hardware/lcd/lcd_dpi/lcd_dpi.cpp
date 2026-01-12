@@ -46,6 +46,7 @@
 #include "hardware/resets.h"
 #include "hardware/clocks.h"
 #include "pico/platform.h"
+#include "hardware/watchdog.h"
 
 #ifdef ENABLE_PSRAM_FB
 extern "C" {
@@ -894,6 +895,10 @@ lcd_error_t LCD_DPI::get_backbuffer(gbuffer_t* lcd_buffer) {
 }
 
 lcd_error_t LCD_DPI::request_pageflip() {
+  // this is a relatively reliable location in the code
+  // to check if the main thread is still running
+  watchdog_hw->load = 2000 * 1000;  // 2s
+
   if (!m_lcd_enabled)
     return LCD_NOT_INIT;
 

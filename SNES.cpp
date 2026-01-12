@@ -5,6 +5,7 @@
 
 #include <picoengine.h>
 #include <fonts/fontfiles/f13x16.h>
+#include <fonts/fontfiles/picoheld_pixel_5x7_rosa.h>
 
 //#include <Arduino.h>
 
@@ -17,9 +18,8 @@
 #include "pico/mutex.h"
 #include "pico/multicore.h"
 #include "pico/flash.h"
-#include "pico/time.h"
+//#include "pico/time.h"
 #include "hardware/vreg.h"
-#include "hardware/watchdog.h"
 
 #include "pico/stdlib.h"  // overclock
 #include "hardware/clocks.h"
@@ -60,7 +60,6 @@ LCD_DPI lcd = LCD_DPI();
 
 gbuffer_t fb_back;
 extern emulator_state_t emulator_state;
-
 /* ---------- LCD END ------------*/
 
 // snes stuff
@@ -418,7 +417,6 @@ int main(void)
   int tainted = 0;
   int untainted = 0;
 #endif
-    watchdog_enable(2000, true);
  
     while (1) {
       ctrl_button_state_update();
@@ -467,7 +465,11 @@ int main(void)
         char debug_print[20];
         itoa(target_fps - dfps, debug_print, 10);
         font_write_string(14, 6, 0x0, debug_print, (font_t*) font_13x16, fb_back);
-        font_write_string(13, 5, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
+        int r = (511 * dfps) / target_fps;
+        int g = 511 - r;
+        if (r > 255) r = 255;
+        if (g > 255) g = 255;
+        font_write_string(13, 5, rgb_col_888_565(r, g, 0), debug_print, (font_t*) font_13x16, fb_back);
       }
 
 #ifdef ENABLE_PSRAM_FB

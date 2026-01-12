@@ -83,11 +83,12 @@ extern LCD_DPI lcd;
 FATFS fs_handle;
 bool m_sd_init = false;
 emulator_state_t emulator_state;
-void* psram_rom;
+//void* psram_rom;
 int translucency = 50;
 uint32_t brownout_det_timer = 0;
 bool brownout_det = false;
 bool in_menu = false;
+bool rom_loaded = false;  // it means, there is not ROM in RAM yet
 
 // starfield
 #define NUM_STARS (50)
@@ -298,7 +299,8 @@ void stars_draw(gbuffer_t fb) {
 }
 
 void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
-  watchdog_update(); 
+  //watchdog_update(); 
+  printf("fed the wd\n");
 
   if (pwr_get_source() != PWR_ON_GRD) {
       if ((pwr_get_bat_vol() <= (PWR_BAT_MIN_VOL + 50)) && !brownout_det) {
@@ -970,12 +972,8 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
   
   em_printf("open complete\n");
 
-  if (psram_rom)
-    sfe_mem_free(psram_rom);
-
   uint32_t filesize = f_size(&fil);
-  psram_rom = sfe_mem_malloc(filesize);
-  uint8_t* buf = (uint8_t*) psram_rom;
+  uint8_t* buf = (uint8_t*) Memory.ROM;
   uint32_t unread_bytes = filesize;
 
   if (!buf) {
@@ -986,7 +984,6 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
 
   em_printf("Got buffer (%d bytes).\n", filesize);
 
-  Memory.ROM = buf;
   Memory.ROM_Size = filesize;
 
   while (unread_bytes) {
@@ -1716,8 +1713,8 @@ static void call_flash_range_erase(void *param) {
 
 int copy_rom_to_flash(gbuffer_t fb) {
 
-  if (!psram_rom)
-    return ERR_PSRAM;
+  //if (!psram_rom)
+  //  return ERR_PSRAM;
 
   long erase_size = Memory.ROM_Size;
   uint32_t rom_flash_address = FLASH_ROM_ADDRESS;
@@ -1766,8 +1763,10 @@ int copy_rom_to_flash(gbuffer_t fb) {
   Memory.ROM = (uint8_t*) rom_flash_address + XIP_BASE;
   Memory.ROM_is_writable = false;
 
-  sfe_mem_free(psram_rom);
-  psram_rom = (uint8_t*) NULL;
+  rom_loaded = true;
+
+  //sfe_mem_free(psram_rom);
+  //psram_rom = (uint8_t*) NULL;
   flash_flush_cache();
 
   return 0;
@@ -1841,6 +1840,8 @@ int menu_loadfile(gbuffer_t fb) {
     ret = ERR_LOAD_ROM;
     goto bailout;
   }
+
+  rom_loaded = true;
  
   for (int i = 0; i < SRAM_SIZE; i++)
     Memory.SRAM[i] = 0;
@@ -1885,7 +1886,7 @@ void emumgr_menu(gbuffer_t fb) {
     main_choice = selection_menu((char*) main_menu_items, true, false, 0, fb_saved);
     switch (main_choice) {
       case 0:
-        if (Memory.ROM) {
+        if (rom_loaded) {
           if (menu_first_run) {
             S9xReset();
           
@@ -1900,7 +1901,7 @@ void emumgr_menu(gbuffer_t fb) {
         
         break;
       case 1:
-        if (!Memory.ROM) {
+        if (!rom_loaded) {
           message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }
@@ -1932,7 +1933,7 @@ void emumgr_menu(gbuffer_t fb) {
         }          
         break;
       case 2:
-        if (!Memory.ROM) {
+        if (!rom_loaded) {
           message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }
