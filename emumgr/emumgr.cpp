@@ -299,9 +299,6 @@ void stars_draw(gbuffer_t fb) {
 }
 
 void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
-  //watchdog_update(); 
-  printf("fed the wd\n");
-
   if (pwr_get_source() != PWR_ON_GRD) {
       if ((pwr_get_bat_vol() <= (PWR_BAT_MIN_VOL + 50)) && !brownout_det) {
       brownout_det_timer = millis();
@@ -354,7 +351,10 @@ void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
 #endif      
   }
 
-  blit_buf_blend(x, y, 0xf81f, 40, draw_battery_gbuf, fb_back);
+  if (brownout_det)
+    blit_buf_blend(x, y, 0xf81f, 80, draw_battery_gbuf, fb_back);
+  else
+    blit_buf_blend(x, y, 0xf81f, 40, draw_battery_gbuf, fb_back);
 }
 
 int sd_deinit() {
