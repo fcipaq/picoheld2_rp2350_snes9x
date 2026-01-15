@@ -26,14 +26,12 @@
 
 #pragma once
 
-#define STR_MAIN_TITLE "Pico Held 2 Snes9x"
+#define STR_MAIN_TITLE "Hauptmen\xfc"
 
 #define STR_ENABLED "aktiviert"
 #define STR_DISABLED "deaktiviert"
 #define STR_OFF "Aus"
 #define STR_ON "Ein"
-#define STR_YES "JA"
-#define STR_NO "NEIN"
 #define STR_AUTO "automatisch"
 #define STR_MANUAL "manuell"
 
@@ -45,29 +43,25 @@
 #define STR_ERR_OPEN_FILE "Datei kann nicht""\0""ge""\xf6""ffnet werden"
 #define STR_ERR_READ_FILE "Datei kann nicht""\0""gelesen werden"
 #define STR_ERR_WRITE_FILE "Datei kann nicht""\0""geschrieben werden"
-#define STR_ERR_PSRAM "Nicht gen""\xfc""egend PSRAM"
 #define STR_ERR_ROM "Beim Laden des ROMS"
 #define STR_ERR_OPEN_DIR "Beim ""\xd6""ffnen des Ordners:"
 #define STR_ERR_GAME_FIRST "Bitte zuerst ein""\0"" Spiel w""\xe4""hlen"
-#define STR_ERR_ABORTED "Abgebrochen"
 #define STR_ERR_SD_MOUNT "Beim Lesen der SD-Karte"
-#define STR_ERR_NO_ROMS_FOUND "Keine ROMS gefunden:"
+#define STR_ERR_NO_ROMS_FOUND "Keine ROMS gefunden in:"
 
 #define STR_OPTIONS_MENU "Einstellungen"
-#define STR_SAVE_STATE "Spielstand sichern"
-#define STR_SAVING_GAME_STATE "Sichere Spielstand"
+#define STR_SAVE_STATE "Speichern"
 #define STR_GAMESTATE_SAVED "Spielstand gesichert"
-#define STR_LOAD_STATE "Spielstand laden"
+#define STR_LOAD_STATE "Laden"
 #define STR_SEL_ROM "Spiel w\xe4hlen"
 #define STR_SOUND "Lautst\xe4rke"
 #define STR_BRIGHTNESS "Helligkeit"
 #define STR_OPTIONS "Einstellungen"
-#define STR_LAUNCH "Emulation starten"
+#define STR_LAUNCH "Starten"
 #define STR_SHUTDOWN "Ausschalten"
 #define STR_ABOUT "Info"
 
 #define STR_BAT "Batterieanzeige"
-#define STR_TOGGLE "umschalten"
 #define STR_FPS "FPS-Anzeige"
 #define STR_FRAMEDROP_MODE "Framedrop-Modus"
 

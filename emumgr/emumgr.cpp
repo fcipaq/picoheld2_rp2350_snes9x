@@ -26,8 +26,8 @@
 
 #include "emumgr_hal.h"
 #include "emumgr.h"
-#include "emumgr_lang_de.h"
-//#include "emumgr_lang_en.h"
+//#include "emumgr_lang_de.h"
+#include "emumgr_lang_en.h"
 #include "heapstrings.h"
 
 // assets
@@ -150,9 +150,6 @@ const char str_err_sd_mount[] = { STR_ERROR"\0"\
                                   STR_ERR_SD_MOUNT"\0"\
                                   MENU_LST };
 
-const char str_err_aborted[] = { STR_ERR_ABORTED"\0"\
-                                 MENU_LST };
-
 const char str_err_open_file[] = { STR_ERROR"\0"\
                                    STR_ERR_OPEN_FILE"\0"\
                                    MENU_LST };
@@ -190,8 +187,8 @@ const char main_menu_items[] = { STR_MAIN_TITLE"\0"\
                                  MENU_LST };
 
 const char settings_menu_items[] = { STR_OPTIONS"\0"\
-					 									         STR_FPS " " STR_TOGGLE "\0"\
-                                     STR_BAT " " STR_TOGGLE "\0"\
+					 									         STR_FPS"\0"\
+                                     STR_BAT"\0"\
                                      STR_FRAMEDROP_MODE "\0"\
                                      STR_GO_BACK"\0"\
                                      MENU_LST };
@@ -366,8 +363,8 @@ int read_image_to_gbuf(char* filename, gbuffer_t fb) {
   uint32_t size = SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2;
 
   fr = em_f_read(buf, size, &br);
-  if (!fr && br != size) {
-    em_printf("read error occured, still %d unread bytes. FR is: %d\n", (int) (size - br), fr);
+  if (!fr || br != size) {
+    em_printf("Read error occured. FR is: %d\n", fr);
     ret = ERR_SD_READING;
   }    
 
@@ -807,14 +804,6 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
   uint8_t* buf = (uint8_t*) Memory.ROM;
   uint32_t unread_bytes = filesize;
 
-  if (!buf) {
-    em_printf("unable to get buffer (%d bytes).\n", filesize);
-    ret = ERR_PSRAM;
-    goto bailout;
-  }
-
-  em_printf("Got buffer (%d bytes).\n", filesize);
-
   Memory.ROM_Size = filesize;
 
   while (unread_bytes) {
@@ -825,7 +814,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
     buf += bytes_read;
     unread_bytes -= bytes_read;
     if (!fr && unread_bytes) {
-      em_printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
+      em_printf("Read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
       ret = ERR_SD_READING;
       goto bailout;
     }
@@ -833,7 +822,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
     percent = 100 - unread_bytes * 100 / filesize;
     if (percent >= step) {
       step += 5;  // smoothness
-      em_printf("Loading from SD: %d %\n", percent);
+      //em_printf("Loading from SD: %d %\n", percent);
       progress_bar(str_loading, percent, fb);
     }
   }
@@ -1621,8 +1610,8 @@ int menu_loadfile(gbuffer_t fb) {
     goto bailout;
   }
 
-  printf("%d roms found", get_item_cnt(buffer) - 1);
-  if (get_item_cnt(buffer) == 2) {
+  printf("%d files found\n", get_item_cnt_aligned(buffer));
+  if (get_item_cnt(buffer) == 0) {
     ret = ERR_NO_ROMS_FOUND;
     goto bailout;
   }
@@ -1689,7 +1678,7 @@ int menu_loadfile(gbuffer_t fb) {
 void emumgr_menu(gbuffer_t fb) {
   if (menu_first_run) {
     // TODO: fixme
-    emulator_state.show_bat = true;
+    emulator_state.show_bat = false;
     emulator_state.show_fps = false;
 
     stars_init();
@@ -1697,6 +1686,9 @@ void emumgr_menu(gbuffer_t fb) {
     Memory.ROM_is_writable = false;
     Memory.ROM = (uint8_t*) ROM_DATA;
     Memory.ROM_Size = ROM_SIZE;
+    if (!LoadROM(NULL))
+      rom_loaded = true;
+
 #endif
 
   }
@@ -1831,10 +1823,9 @@ void emumgr_menu(gbuffer_t fb) {
         res = menu_loadfile(fb_saved);
         switch (res) {
           case SUCCESS:
-            em_printf("starting emulation\n");
+            em_printf("Starting emulation\n");
             goto leave;
           case ERR_ABORTED:
-            //message(str_err_aborted, true, 1000, fb_saved);
             em_printf("aborted by user\n");
             break;
           case ERR_PSRAM:

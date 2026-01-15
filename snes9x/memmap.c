@@ -270,7 +270,7 @@ bool S9xInitMemory(void)
 #endif
    IPPU.TileCached = (uint8_t*) TileCached;  // 4kB
    bytes0x2000 = (uint8_t*) sfe_mem_malloc(0x2000);  // 8 kB
-   Memory.PSRAM   = (uint8_t*) sfe_mem_malloc(MAX_ROM_SIZE);   // 5MB
+   Memory.PSRAM   = (uint8_t*) sfe_mem_malloc(MAX_ROM_SIZE);   // 5MB  // This is where the ROM goes if loaded to PSRAM
 
    if (!Memory.RAM || !Memory.VRAM || !Memory.SRAM || !Memory.FillRAM || !Memory.PSRAM
       || !IPPU.TileCache || !IPPU.TileCached || !bytes0x2000 )

@@ -47,12 +47,9 @@ extern "C" {
 
 #include <malloc.h>
 
-#define LCD_ENABLE
 #define AUDIO_ENABLE
 
-#ifdef LCD_ENABLE
 LCD_DPI lcd = LCD_DPI();
-#endif
 
 gbuffer_t fb_back;
 extern emulator_state_t emulator_state;
@@ -88,31 +85,21 @@ static bool reset_handler(bool hard)
     return true;
 }
 
-uint Pitch = SNES_WIDTH * 2;
-uint ZPitch = SNES_WIDTH;
 uint8_t ZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
 uint8_t SubZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
-#ifndef LCD_ENABLE
-uint8_t Screen[SNES_WIDTH * SNES_HEIGHT_EXTENDED * 2];
-#endif
 
 bool S9xInitDisplay(void)
 {
-#ifdef LCD_ENABLE
     lcd.get_backbuffer(&fb_back);
     GFX.Screen = (uint8_t*) fb_back.data;
-#else
-    GFX.Screen = (uint8_t*) Screen;
-#endif
 
-    GFX.Pitch = Pitch;
-    GFX.ZPitch = ZPitch;
+    GFX.Pitch = SNES_WIDTH * 2;
+    GFX.ZPitch = SNES_WIDTH;
 
     GFX.SubScreen = GFX.Screen; //(uint8_t*) sfe_mem_malloc(GFX.Pitch * SNES_HEIGHT_EXTENDED);
     GFX.ZBuffer = ZBuffer; //(uint8_t*) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);
 
-    GFX.SubZBuffer = SubZBuffer; // 56 kB
-    //GFX.SubZBuffer = (uint8_t *) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);  // 56 kB
+    GFX.SubZBuffer = SubZBuffer; // 56 kB // (uint8_t *) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);  // 56 kB
     
     return GFX.Screen && GFX.SubScreen && GFX.ZBuffer && GFX.SubZBuffer;
 }
@@ -231,8 +218,6 @@ uint32_t micros() {
   return to_us_since_boot(get_absolute_time());
 }
 
-
-
 void setup(void) {
   int ret;
 
@@ -254,12 +239,15 @@ void setup(void) {
   gpio_set_function(PIN_SD_MISO_TX /* TX */, GPIO_FUNC_UART);
 #endif
 
-  if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 90000000)) {  //70  // Pimoroni can do 90 - why?
+  // PSRAM
+  if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 90000000))  //70  // Pimoroni can do 90 - why?
     emu_panic("sfe error\n");
-  } else
-  printf("sfe init complete\n");
-  
-  printf("online\n");
+  printf("Trying to get some PSRAM\n");
+  uint16_t* test = (uint16_t*) sfe_mem_malloc(1024);
+  if (!test)
+    emu_panic("PSRAM ERROR\n");
+  sfe_mem_free(test);
+
 
   pe_config_t pe_cfg = {
     .lcd_num_fb = 2,
@@ -275,25 +263,15 @@ void setup(void) {
   // power up SD card
   pwr_sd_sply(1); 
 
-#ifdef LCD_ENABLE  
   ret = lcd.init(pe_cfg.lcd_num_fb, pe_cfg.lcd_refresh_mode, pe_cfg.lcd_scale);
   if (ret != LCD_SUCCESS)
     emu_panic("lcd error\n");
-
-  printf("lcd init complete.\n");
 
   emulator_state.volume = 2;
   emulator_state.brightness = 20;
 
   lcd_backlight_init();
   lcd_backlight_set(0);
-
-  printf("trying to get some PSRAM\n");
-  uint16_t* test  = (uint16_t*) sfe_mem_malloc(1024);
-  if (!test) {
-    emu_panic("PSRAM ERROR\n");
-  }
-#endif
 
 }
 
@@ -384,8 +362,6 @@ int main(void)
 #ifdef ENABLE_PSRAM_FB
     gbuffer_t fb_back_psram;
 #endif
-
-    printf("Starting emulation.\n");
 
 #ifdef AUDIO_ENABLE
   mutex_init(&audio_generate);
@@ -510,12 +486,10 @@ int main(void)
     font_write_string(10, 10 + 90, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
 #endif
 
-#ifdef LCD_ENABLE
     if (IPPU.RenderThisFrame == true) {
       lcd.request_pageflip();
     }
-#endif
- 
+     
     /* ---------- LCD END------------*/
     IPPU.RenderThisFrame = true;
       
@@ -530,11 +504,11 @@ int main(void)
 
     framedrop_balance += (micros() - startTime) - frame_time;
 
-    // too slow?
+    // Are we too slow
     if (framedrop_balance > frame_time / 2) // fcipaq: TODO: what amount is best?
       IPPU.RenderThisFrame = false;
   
-    // too fast?
+    // Are we too fast
     if (framedrop_balance < (-frame_time / 2))   // Allow some jitter
     {
       int32_t fpsLimiter = micros();
