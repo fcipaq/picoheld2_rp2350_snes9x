@@ -109,7 +109,7 @@ int supply_type_last = -1;
 #define MENU_FONT_CAPTION_COLOR rgb_col_888_565(200, 200, 200)
 
 #define MENU_REPEAT_START (500)
-#define MENU_REPEAT_DELAY (100)
+#define MENU_REPEAT_DELAY (50)
 
 // min clearance from screen border
 #define MENU_MIN_X_CLEAR (30)  
@@ -959,7 +959,7 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
 
 }
 
-int selection_menu(char* item_list, bool centered, bool no_highlight, int delay, gbuffer_t fb) {
+int selection_menu(char* item_list, bool centered, bool no_highlight, bool no_caption, int delay, gbuffer_t fb) {
   gbuffer_t fb_back;
 
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
@@ -967,7 +967,8 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, int delay,
   color_t menu_font_unselected_color = MENU_FONT_UNSELECTED_COLOR;
   color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
 
-  float menu_caption_offset = 1.2;
+  float menu_caption_offset = no_caption ? 0.4 : 1.2;
+  
   font_t* menu_font = (font_t*) MENU_FONT;
   int menu_items_clearance_y = 5;
   int num_itms = get_item_cnt(item_list) - 1;  // minus the caption
@@ -1043,8 +1044,10 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, int delay,
                    fb_back);
     
     // caption
-    font_write_string_centered(1 + menu_offset_x + menu_width / 2, 1 + menu_offset_y, menu_font_shadow_color, get_item(0, item_list), menu_font, fb_back);
-    font_write_string_centered(menu_offset_x + menu_width / 2, menu_offset_y, menu_font_caption_color, get_item(0, item_list), menu_font, fb_back);
+    if (!no_caption) {
+      font_write_string_centered(1 + menu_offset_x + menu_width / 2, 1 + menu_offset_y, menu_font_shadow_color, get_item(0, item_list), menu_font, fb_back);
+      font_write_string_centered(menu_offset_x + menu_width / 2, menu_offset_y, menu_font_caption_color, get_item(0, item_list), menu_font, fb_back);
+    }
     /*
     draw_line(menu_offset_x + menu_width / 2 - font_get_string_width(get_item(0, item_list), menu_font) / 4,
               menu_offset_y + font_get_height(menu_font) + menu_caption_offset * menu_items_clearance_y / 2,
@@ -1266,16 +1269,24 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, int delay,
           ctrl_is_pressed(BUTTON_SW))
         goto leave;
 
-      if (ctrl_is_pressed(BUTTON_DOWN) && !b_debounce && (cur_itm < (num_itms - 1))) {
+      if (ctrl_is_pressed(BUTTON_DOWN) && !b_debounce) {
         cur_itm++;
+        
+        if (cur_itm > (num_itms - 1))
+          cur_itm = 0;
+
         h_font_scrl_timer = millis();
         h_font_scrl_pos = 0;
         h_font_scrl_dir = 1;
         h_font_scrl_delay = 1000;
       }
 
-      if (ctrl_is_pressed(BUTTON_UP) && !b_debounce && (cur_itm > 0)) {
+      if (ctrl_is_pressed(BUTTON_UP) && !b_debounce) {
         cur_itm--;
+
+        if (cur_itm < 0)
+          cur_itm = num_itms - 1;  
+        
         h_font_scrl_timer = millis();
         h_font_scrl_pos = 0;
         h_font_scrl_dir = 1;
@@ -1309,7 +1320,7 @@ leave:
 }  // selection_menu
 
 void message(const char* item_list, bool centered, uint32_t delay, gbuffer_t fb) {
-  selection_menu((char*) item_list, centered, true, delay, fb);
+  selection_menu((char*) item_list, centered, true, false, delay, fb);
 };
 
 int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
@@ -1620,12 +1631,9 @@ int menu_loadfile(gbuffer_t fb) {
   insert_item_aligned(0, (char*) str_sel_rom, buffer);
   insert_item_aligned(1, (char*) str_go_back, buffer);
 
-  // add go back at bottom of list
-  add_item_aligned((char*) str_go_back, buffer);
-
-  res = selection_menu((char*) buffer, false, false, 0, fb);
+  res = selection_menu((char*) buffer, false, false, false, 0, fb);
   em_printf("Selection is %d of %d\n", res, get_item_cnt(buffer));
-  if ((res == 0) || (res == (get_item_cnt(buffer) - 1 - 1 /* minus the caption */))) {
+  if (res == 0) {
     ret = ERR_ABORTED;
     goto bailout;
   }
@@ -1713,7 +1721,7 @@ void emumgr_menu(gbuffer_t fb) {
   in_menu = true;
 
   while (1) {
-    main_choice = selection_menu((char*) main_menu_items, true, false, 0, fb_saved);
+    main_choice = selection_menu((char*) main_menu_items, true, false, true, 0, fb_saved);
     switch (main_choice) {
       case 0:
         if (rom_loaded) {
@@ -1858,7 +1866,7 @@ void emumgr_menu(gbuffer_t fb) {
         }
         break;
       case 6:
-        sub_choice = selection_menu((char*) settings_menu_items, true, false, 0, fb_saved);
+        sub_choice = selection_menu((char*) settings_menu_items, true, false, false, 0, fb_saved);
 
         switch (sub_choice) {
           case 0:
