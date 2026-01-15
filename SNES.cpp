@@ -46,10 +46,6 @@ extern "C" {
 }
 
 #include <malloc.h>
-//#define HEADER_ROM
-#ifdef HEADER_ROM
-#include "../rom_lion_king.h"
-#endif
 
 #define LCD_ENABLE
 #define AUDIO_ENABLE
@@ -342,12 +338,6 @@ int main(void)
   Settings.SoundInputRate = AUDIO_SAMPLE_RATE;
 #endif
   Memory.ROM = NULL;
-    struct mallinfo info = mallinfo();
-
-    printf("Total allocated: %d bytes\n", info.uordblks);
-    printf("Total free: %d bytes\n", info.fordblks);
-    printf("Total heap size: %d bytes\n", info.arena);
-    printf("Largest free block: %d bytes\n", info.ordblks);
 
   if (!S9xInitMemory())
       emu_panic("Memory init failed!\n");
@@ -363,11 +353,6 @@ int main(void)
 
   if (!S9xInitGFX())
       emu_panic("Graphics init failed!\n");
-
-#ifdef HEADER_ROM
-  Memory.ROM = (uint8_t*) ROM_DATA;
-  Memory.ROM_Size = ROM_SIZE;
-#endif
 
   bl_fade_in();
 
@@ -563,7 +548,6 @@ int main(void)
     frame_no++;
     if (millis() - fps_timer > 1000) {
 
-      printf("Bat vol: %d\n", pwr_get_bat_vol());
     #if 0
       printf("Bat vol: %d\n", pwr_get_bat_vol());
       printf("Power src: %d\n", pwr_get_source());

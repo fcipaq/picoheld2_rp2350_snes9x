@@ -818,6 +818,8 @@ lcd_error_t LCD_DPI::init(uint16_t num_fb, int auto_refresh, int scale) {
   
   m_lcd_enabled = true;
 
+  watchdog_enable(5000, false);
+
   return res;
 
   bailout:
@@ -897,7 +899,7 @@ lcd_error_t LCD_DPI::get_backbuffer(gbuffer_t* lcd_buffer) {
 lcd_error_t LCD_DPI::request_pageflip() {
   // this is a relatively reliable location in the code
   // to check if the main thread is still running
-  watchdog_hw->load = 2000 * 1000;  // 2s
+  watchdog_hw->load = 5000 * 1000;  // 2s
 
   if (!m_lcd_enabled)
     return LCD_NOT_INIT;

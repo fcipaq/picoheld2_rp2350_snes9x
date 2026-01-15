@@ -99,6 +99,7 @@ typedef struct
 {
    uint8_t* RAM;
    uint8_t* ROM;
+   uint8_t* PSRAM;
    uint8_t* VRAM;
    uint8_t* SRAM;
    uint8_t* FillRAM;

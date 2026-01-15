@@ -17,25 +17,18 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
- 
+
 #include <string>
 #include <initializer_list>
-
-/* SD support */
-#include "tf_card.h"
-#include "ff.h"
 
 /* Pico Held hw library */
 #include <picoengine.h>
 
-#include "hardware/flash.h"
-#include <hardware/xip_cache.h>
-#include "pico/bootrom.h"
-#include "hardware/watchdog.h"
-
+#include "emumgr_hal.h"
 #include "emumgr.h"
 #include "emumgr_lang_de.h"
 //#include "emumgr_lang_en.h"
+#include "heapstrings.h"
 
 // assets
 #include "assets/rect.h"
@@ -55,12 +48,14 @@ extern "C" {
 #include "snes9x/srtc.h"
 #include "snes9x/save.h"
 #include "snes9x/gfx.h"
-
-// PSRAM
-#include "sparkfun_pico/sfe_pico.h"
 }
 
 #include <utility>  // debug printf
+
+#define HEADER_ROM
+#ifdef HEADER_ROM
+#include "../../rom_super_mario_world.h"
+#endif
 
 #define FLASH_ROM_ADDRESS (0x500000)
 
@@ -79,16 +74,18 @@ uint32_t micros();
 /* ====================================================== variables ====================================================== */
 // misc
 int menu_first_run = 1;
-extern LCD_DPI lcd;
-FATFS fs_handle;
-bool m_sd_init = false;
+
 emulator_state_t emulator_state;
 //void* psram_rom;
 int translucency = 50;
 uint32_t brownout_det_timer = 0;
 bool brownout_det = false;
 bool in_menu = false;
-bool rom_loaded = false;  // it means, there is not ROM in RAM yet
+#ifdef HEADER_ROM
+bool rom_loaded = true;
+#else
+bool rom_loaded = false;  // it means, there is no ROM data @ Memory.ROM yet
+#endif
 
 // starfield
 #define NUM_STARS (50)
@@ -104,7 +101,6 @@ int battery_last_level = -1;
 int supply_type_last = -1;
 
 /* ====================================================== end variables ====================================================== */
-
 #define MENU_FONT picoheld_pixel_5x7_rosa
 
 #define MENU_FONT_SHADOW_COLOR rgb_col_888_565(30, 30, 30)
@@ -123,8 +119,6 @@ int supply_type_last = -1;
 #define MESSAGE_DELAY_SHORT (1000)
 #define MESSAGE_DELAY_BLINKOFANEYE (750)
 
-#define DIRECTORY_MAX_ITEMS (100)
-#define DIRECTORY_BUFFER_SIZE (DIRECTORY_MAX_ITEMS * (256 + 4))
 #define FILE_READ_CHUNK_SIZE (2048)
 
 #define DRAW_BATTERY_X (219)
@@ -148,8 +142,6 @@ int supply_type_last = -1;
 #define ERR_NO_ROMS_FOUND -9
 
 #define MENU_LST "\xff"
-const char terminatorstring = 255;
-const char nullstring = 0;
 
 const char str_gamestate_saved[] = { STR_GAMESTATE_SAVED"\0"\
                                      MENU_LST };
@@ -240,10 +232,10 @@ const char str_load_game_first[] = { STR_ERR_GAME_FIRST"\0"\
 
 int stars_init() {
   if (stars_x == NULL) {
-    stars_x = (uint8_t*) sfe_mem_malloc(NUM_STARS);
-    stars_y = (uint8_t*) sfe_mem_malloc(NUM_STARS);
-    stars_speed = (uint8_t*) sfe_mem_malloc(NUM_STARS);
-    stars_color = (uint8_t*) sfe_mem_malloc(NUM_STARS);
+    stars_x = (uint8_t*) em_psram_malloc(NUM_STARS);
+    stars_y = (uint8_t*) em_psram_malloc(NUM_STARS);
+    stars_speed = (uint8_t*) em_psram_malloc(NUM_STARS);
+    stars_color = (uint8_t*) em_psram_malloc(NUM_STARS);
 
     if (!stars_x || !stars_y || !stars_color || !stars_speed) {
       em_printf("Error: Cannot allocate PSRAM\n");
@@ -318,7 +310,7 @@ void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
     return;
 
   if (gbuf_get_dat_ptr(draw_battery_gbuf) == NULL) {
-    if (gbuf_create(&draw_battery_gbuf, gbuf_get_width(battery_normal_image), gbuf_get_height(battery_normal_image), (void*) sfe_mem_malloc(gbuf_get_width(battery_normal_image) * gbuf_get_height(battery_normal_image) * 2)) != BUF_SUCCESS) {
+    if (gbuf_create(&draw_battery_gbuf, gbuf_get_width(battery_normal_image), gbuf_get_height(battery_normal_image), (void*) em_psram_malloc(gbuf_get_width(battery_normal_image) * gbuf_get_height(battery_normal_image) * 2)) != BUF_SUCCESS) {
       em_printf("Error: Cannot allocate PSRAM\n");
       return;
     }       
@@ -357,92 +349,12 @@ void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
     blit_buf_blend(x, y, 0xf81f, 40, draw_battery_gbuf, fb_back);
 }
 
-int sd_deinit() {
-  if (!m_sd_init)
-    return true;
-
-  f_mount(NULL, "", 0); // unmount
-  //sleep_ms(500);
-  pwr_sd_sply(0);
-
-  m_sd_init = false;
-
-  return true;
-}
-
-int sd_init() {
-#if 0
-  if (!pwr_sd_det()) {
-    printf("SD det is: %d\n", pwr_sd_det() ? 1 : 0);
-    // sd has been removed by user
-    m_sd_init = false;
-    return false;
-  }
-#endif
-
-  if (m_sd_init)
-    return true;
-
-  FRESULT fr;     /* FatFs return code */
-
-  pwr_sd_sply(1);
-  sleep_ms(250);  // Is that enough?
-
-  // modify below if customized configuration is needed
-  pico_fatfs_spi_config_t config = {
-      spi0,  // if unmatched SPI pin assignments with spi0/spi1 or explicitly designated as NULL, SPI PIO will be configured 
-      CLK_SLOW_DEFAULT,
-      150000000 / 4, //CLK_FAST_DEFAULT,
-      PIN_SD_MISO,  // SPIx_RX
-      PIN_SD_CS,
-      PIN_SD_SCK,   // SPIx_SCK
-      PIN_SD_MOSI,  // SPIx_TX
-      true   // use internal pullup
-  };
-
-  bool spi_configured = pico_fatfs_set_config(&config);
-
-  if (!spi_configured) {
-    em_printf("Cannot setup SPI for SD card.\n");
-    return false;
-  }
-
-#if 0
-  for (int i = 0; i < 2; i++) {
-    fr = f_mount(&fs_handle, "", 1);
-
-    if (fr == FR_OK)
-      break;
-
-    em_printf("Mounting failed: %d - retrying.\n", (int) fr);
-    pwr_sd_sply(0);
-    sleep_ms(500);
-    pwr_sd_sply(1);
-    sleep_ms(500);
-    pico_fatfs_reboot_spi();
-  }
-#else
-  fr = f_mount(&fs_handle, "", 1);
-#endif
-
-  if (fr != FR_OK)
-    return false;
-
-  em_printf("Mounting complete\n");
-
-  m_sd_init = true;
-
-  return true;
-}
-
 int read_image_to_gbuf(char* filename, gbuffer_t fb) {
-  FIL fil;
-  FRESULT fr;
   int ret = SUCCESS;
 
-  fr = f_open(&fil, filename, FA_READ);
+  bool fr = em_f_open(filename, EM_FA_R);
 
-  if (fr != FR_OK) {
+  if (!fr) {
       em_printf("read_image_to_gbuf: open file (%s) failed: %d\n", filename, (int) fr);
       return ERR_SD_OPEN_FIL;
   }
@@ -450,18 +362,18 @@ int read_image_to_gbuf(char* filename, gbuffer_t fb) {
   uint32_t pos = 0;
   uint8_t* buf = (uint8_t*) gbuf_get_dat_ptr(fb);
 
-  UINT br;
+  uint32_t br;
   uint32_t size = SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2;
 
-  fr = f_read(&fil, buf, size, &br);
-  if ((fr != FR_OK) && br != size) {
+  fr = em_f_read(buf, size, &br);
+  if (!fr && br != size) {
     em_printf("read error occured, still %d unread bytes. FR is: %d\n", (int) (size - br), fr);
     ret = ERR_SD_READING;
   }    
 
   bailout:
 
-  f_close(&fil);
+  em_f_close();
 
   return ret;
   
@@ -476,78 +388,76 @@ static bool screenshot_handler(const char *filename, int width, int height)
 int save_state_handler(char *filename)
 {
   int ret = SUCCESS;
+  bool fr;
 
   em_printf("Savestate handler called: %s\n", filename);
 
-  FIL fil;
-  FRESULT fr;
-  
-  fr = f_open(&fil, filename, FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
+  fr = em_f_open(filename, EM_FA_RWC);
 
-  if (fr != FR_OK) {
+  if (!fr) {
     em_printf("savestate handler: open file failed: %d\n", (int) fr);
     return ERR_SD_OPEN_FIL;  // error opening
   }
 
-  UINT bw;
+  uint32_t bw;
 
-  fr = f_write(&fil, (uint8_t*) &CPU, sizeof(CPU), &bw);
-  if ((fr != FR_OK) || (bw != sizeof(CPU))) {
+  fr = em_f_write((uint8_t*) &CPU, sizeof(CPU), &bw);
+  if (!fr || (bw != sizeof(CPU))) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) &ICPU, sizeof(ICPU), &bw);
-  if ((fr != FR_OK) || (bw != sizeof(ICPU))) {
+  fr = em_f_write((uint8_t*) &ICPU, sizeof(ICPU), &bw);
+  if (!fr || (bw != sizeof(ICPU))) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) &PPU, sizeof(PPU), &bw);
-  if ((fr != FR_OK) || (bw != sizeof(PPU))) {
+  fr = em_f_write((uint8_t*) &PPU, sizeof(PPU), &bw);
+  if (!fr || (bw != sizeof(PPU))) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) &DMA, sizeof(DMA), &bw);
-  if ((fr != FR_OK) || (bw != sizeof(DMA))) {
+  fr = em_f_write((uint8_t*) &DMA, sizeof(DMA), &bw);
+  if (!fr || (bw != sizeof(DMA))) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) Memory.VRAM, VRAM_SIZE, &bw);
-  if ((fr != FR_OK) || (bw != VRAM_SIZE)) {
+  fr = em_f_write((uint8_t*) Memory.VRAM, VRAM_SIZE, &bw);
+  if (!fr || (bw != VRAM_SIZE)) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) Memory.RAM, RAM_SIZE, &bw);
-  if ((fr != FR_OK) || (bw != RAM_SIZE)) {
+  fr = em_f_write((uint8_t*) Memory.RAM, RAM_SIZE, &bw);
+  if (!fr || (bw != RAM_SIZE)) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) Memory.SRAM, SRAM_SIZE, &bw);
-  if ((fr != FR_OK) || (bw != SRAM_SIZE)) {
+  fr = em_f_write((uint8_t*) Memory.SRAM, SRAM_SIZE, &bw);
+  if (!fr || (bw != SRAM_SIZE)) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &bw);
-  if ((fr != FR_OK) || (bw != FILLRAM_SIZE)) {
+  fr = em_f_write((uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &bw);
+  if (!fr || (bw != FILLRAM_SIZE)) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) &APU, sizeof(APU), &bw);
-  if ((fr != FR_OK) || (bw != sizeof(APU))) {
+  fr = em_f_write((uint8_t*) &APU, sizeof(APU), &bw);
+  if (!fr || (bw != sizeof(APU))) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) &IAPU, sizeof(IAPU), &bw);
-  if ((fr != FR_OK) || (bw != sizeof(IAPU))) {
+  fr = em_f_write((uint8_t*) &IAPU, sizeof(IAPU), &bw);
+  if (!fr || (bw != sizeof(IAPU))) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) IAPU.RAM, 0x10000, &bw);
-  if ((fr != FR_OK) || (bw != 0x10000)) {
+  fr = em_f_write((uint8_t*) IAPU.RAM, 0x10000, &bw);
+  if (!fr || (bw != 0x10000)) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
-  fr = f_write(&fil, (uint8_t*) &SoundData, sizeof(SoundData), &bw);
-  if ((fr != FR_OK) || (bw != sizeof(SoundData))) {
+  fr = em_f_write((uint8_t*) &SoundData, sizeof(SoundData), &bw);
+  if (!fr || (bw != sizeof(SoundData))) {
     ret = ERR_SD_WRITING;
     goto bailout;
   }
@@ -556,7 +466,7 @@ int save_state_handler(char *filename)
 
   bailout:
   
-  f_close(&fil);
+  em_f_close();
 
   return ret;
 }
@@ -567,9 +477,8 @@ int screenshot_saver(char *filename, gbuffer_t fb)
 
   em_printf("Screenshot handler called: %s\n", filename);
 
-  FIL fil;
-  FRESULT fr;
-  UINT bw;
+  bool fr;
+  uint32_t bw;
 
   uint32_t filesize = SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2;
   uint32_t pos = 0;
@@ -577,14 +486,14 @@ int screenshot_saver(char *filename, gbuffer_t fb)
   uint16_t* buf_dst;
   uint32_t size;
   
-  fr = f_open(&fil, filename, FA_READ | FA_WRITE | FA_CREATE_ALWAYS);
+  fr = em_f_open(filename, EM_FA_RWC);
 
-  if (fr != FR_OK) {
+  if (!fr) {
     em_printf("screenshot_save: open file failed: %d\n", (int) fr);
     return ERR_SD_OPEN_FIL;  // error opening
   }
 
-  buf_dst = (uint16_t*) sfe_mem_malloc(SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2);
+  buf_dst = (uint16_t*) em_psram_malloc(SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2);
   if (!buf_dst) {
     ret = ERR_PSRAM;
     goto bailout;
@@ -630,8 +539,8 @@ int screenshot_saver(char *filename, gbuffer_t fb)
   #endif
 
   size = SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2;
-  fr = f_write(&fil, (void*) buf_dst, size, &bw);
-  if ((fr != FR_OK) || (bw != size)) {
+  fr = em_f_write((uint8_t*) buf_dst, size, &bw);
+  if (!fr || (bw != size)) {
     em_printf("Error writing screenshot data.\n");
     ret = ERR_SD_WRITING;
     goto bailout;
@@ -641,10 +550,10 @@ int screenshot_saver(char *filename, gbuffer_t fb)
 
   bailout:
 
-  f_close(&fil);
+  em_f_close();
 
   if (buf_dst)
-    sfe_mem_free(buf_dst);
+    em_psram_free(buf_dst);
   
   return ret;
 }
@@ -652,83 +561,80 @@ int screenshot_saver(char *filename, gbuffer_t fb)
 int load_state_handler(char *filename)
 {
   int ret = SUCCESS;
-
-  FIL fil;
-  FRESULT fr;
+  uint32_t br;
+  bool fr;
 
   em_printf("Loadstate handler called. File: %s..\n", filename);
 
-  fr = f_open(&fil, filename, FA_READ);
+  fr = em_f_open(filename, EM_FA_R);
 
-  if (fr != FR_OK) {
+  if (!fr) {
     em_printf("loadstate handler: open failed: %d\n", (int) fr);
     return ERR_SD_OPEN_FIL;
   }
-
-  UINT br;
 
   S9xReset();
 
   // At this point we can't go back and a failure will corrupt the state anyway
   em_printf("Now reading to memory.\n");
 
-  fr = f_read(&fil, (uint8_t*) &CPU, sizeof(CPU), &br);
-  if ((fr != FR_OK) || (br != sizeof(CPU))) {
+  fr = em_f_read((uint8_t*) &CPU, sizeof(CPU), &br);
+  if (!fr || (br != sizeof(CPU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) &ICPU, sizeof(ICPU), &br);
-  if ((fr != FR_OK) || (br != sizeof(ICPU))) {
+  fr = em_f_read((uint8_t*) &ICPU, sizeof(ICPU), &br);
+  if (!fr || (br != sizeof(ICPU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) &PPU, sizeof(PPU), &br);
-  if ((fr != FR_OK) || (br != sizeof(PPU))) {
+  fr = em_f_read((uint8_t*) &PPU, sizeof(PPU), &br);
+  if (!fr || (br != sizeof(PPU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) &DMA, sizeof(DMA), &br);
-  if ((fr != FR_OK) || (br != sizeof(DMA))) {
+  fr = em_f_read((uint8_t*) &DMA, sizeof(DMA), &br);
+  if (!fr || (br != sizeof(DMA))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) Memory.VRAM, VRAM_SIZE, &br);
-  if ((fr != FR_OK) || (br != VRAM_SIZE)) {
+  fr = em_f_read((uint8_t*) Memory.VRAM, VRAM_SIZE, &br);
+  if (!fr || (br != VRAM_SIZE)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) Memory.RAM, RAM_SIZE, &br);
-  if ((fr != FR_OK) || (br != RAM_SIZE)) {
+  fr = em_f_read((uint8_t*) Memory.RAM, RAM_SIZE, &br);
+  if (!fr || (br != RAM_SIZE)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) Memory.SRAM, SRAM_SIZE, &br);
-  if ((fr != FR_OK) || (br != SRAM_SIZE)) {
+  fr = em_f_read((uint8_t*) Memory.SRAM, SRAM_SIZE, &br);
+  if (!fr || (br != SRAM_SIZE)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &br);
-  if ((fr != FR_OK) || (br != FILLRAM_SIZE)) {
+  fr = em_f_read((uint8_t*) Memory.FillRAM, FILLRAM_SIZE, &br);
+  if (!fr || (br != FILLRAM_SIZE)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) &APU, sizeof(APU), &br);
-  if ((fr != FR_OK) || (br != sizeof(APU))) {
+  fr = em_f_read((uint8_t*) &APU, sizeof(APU), &br);
+  if (!fr || (br != sizeof(APU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) &IAPU, sizeof(IAPU), &br);
-  if ((fr != FR_OK) || (br != sizeof(IAPU))) {
+  fr = em_f_read((uint8_t*) &IAPU, sizeof(IAPU), &br);
+  if (!fr || (br != sizeof(IAPU))) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) IAPU.RAM, 0x10000, &br);
-  if ((fr != FR_OK) || (br != 0x10000)) {
+  fr = em_f_read((uint8_t*) IAPU.RAM, 0x10000, &br);
+  if (!fr || (br != 0x10000)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
-  fr = f_read(&fil, (uint8_t*) &SoundData, sizeof(SoundData), &br);
-  if ((fr != FR_OK) || br != sizeof(SoundData)) {
+  fr = em_f_read((uint8_t*) &SoundData, sizeof(SoundData), &br);
+  if (!fr || br != sizeof(SoundData)) {
     ret = ERR_SD_READING;
     goto bailout;
   }
@@ -739,7 +645,7 @@ int load_state_handler(char *filename)
 
 bailout:
 
-  f_close(&fil);
+  em_f_close();
 
   //return S9xLoadState();
   return ret;
@@ -786,85 +692,10 @@ int check_rom_valid(uint8_t* rom_addr) {
 
 
 /* ----------------------- main function -----------------------*/
-char* get_item(int item, char* buffer) {
-  int pos = 0;
-  int cur_entry = 0;
-
-  while (item != cur_entry) {
-
-    while (1) {
-      pos++;
-      if (pos >= DIRECTORY_BUFFER_SIZE)
-        return (char*) &nullstring;
-      if (buffer[pos] == 0) {
-        pos++;
-        break;
-      }
-    }
-
-    cur_entry++;
-
-  }
-
-  return &buffer[pos];
-}
-
-
-int get_item_cnt(char* buffer) {
-  int pos = 0;
-  int cur_entry = 0;
-
-  for (int i = 0; i < DIRECTORY_BUFFER_SIZE; i++) {
-
-    while (1) {
-      pos++;
-      if (buffer[pos] == nullstring) {
-        break;
-      }
-      if (buffer[pos] == terminatorstring)
-        return cur_entry;
-    }
-
-    cur_entry++;
-
-  }
-
-  return ERR_UNSPEC;
-}
-
-int get_directory(const char *path, char* buffer) {
-    FRESULT res;
-    DIR dir;
-    FILINFO fno;
-
-    int buf_pos = 0;
-    int item_cnt = 0;
-
-    res = f_opendir(&dir, path);                   /* Open the directory */
-    if (res == FR_OK) {
-        for (;;) {
-            res = f_readdir(&dir, &fno);           /* Read a directory item */
-            if ((fno.fname[0] == 0) || (item_cnt >= DIRECTORY_MAX_ITEMS)) break;          /* Error or end of dir/RAM */
-            if (!(fno.fattrib & AM_DIR)) {
-                strcpy(&buffer[buf_pos], fno.fname);
-                buf_pos += strlen(fno.fname) + 1;
-                item_cnt++;
-            }
-        }
-        f_closedir(&dir);
-    } else {
-        em_printf("Error reading directory: \"%s\". (%u)\n", path, res);
-        return ERR_SD_OPEN_DIR;
-    }
-
-    buffer[buf_pos] = terminatorstring;
-    return 0;
-}
-
 int draw_rectangle(coord_t x, coord_t y, coord_t width, coord_t height, int translucency, gbuffer_t fb) {
   gbuffer_t fb_tmp;
 
-  if (gbuf_create(&fb_tmp, width, height, (void*) sfe_mem_malloc(width * height * 2)) != BUF_SUCCESS) {
+  if (gbuf_create(&fb_tmp, width, height, (void*) em_psram_malloc(width * height * 2)) != BUF_SUCCESS) {
     em_printf("Error: Cannot allocate PSRAM\n");
     return ERR_PSRAM;
   }
@@ -888,7 +719,7 @@ int draw_rectangle(coord_t x, coord_t y, coord_t width, coord_t height, int tran
   
   blit_buf_blend(x, y, 0xf81f, translucency, fb_tmp, fb);
   
-  sfe_mem_free(gbuf_get_dat_ptr(fb_tmp));
+  em_psram_free(gbuf_get_dat_ptr(fb_tmp));
   return 0;
 
 }
@@ -898,7 +729,7 @@ int progress_bar(const char* caption, int value, gbuffer_t fb) {
     return ERR_UNSPEC;
   
   gbuffer_t fb_back;
-  lcd.get_backbuffer(&fb_back);
+  em_get_backbuffer(&fb_back);
 
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
   color_t menu_font_caption_color = MENU_FONT_CAPTION_COLOR;
@@ -948,7 +779,7 @@ int progress_bar(const char* caption, int value, gbuffer_t fb) {
 
   draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
 
-  lcd.request_pageflip();
+  em_request_pageflip();
 
   return 0;
 
@@ -956,23 +787,23 @@ int progress_bar(const char* caption, int value, gbuffer_t fb) {
 
 int load_rom_from_sd(char* filename, gbuffer_t fb) {
   int ret = 0;
-  FIL fil;
-  FRESULT fr;
 
   int step = 0;
   int percent = 0; 
   uint32_t readlen = FILE_READ_CHUNK_SIZE;
 
-  fr = f_open(&fil, filename, FA_READ);
+  bool fr = em_f_open(filename, EM_FA_R);
 
-  if (fr != FR_OK) {
-      em_printf("open file failed: %d\n", (int) fr);
+  if (!fr) {
+      em_printf("open file failed\n");
       return ERR_SD_OPEN_FIL;
   }
   
   em_printf("open complete\n");
 
-  uint32_t filesize = f_size(&fil);
+  Memory.ROM = Memory.PSRAM;
+
+  uint32_t filesize = em_f_size();
   uint8_t* buf = (uint8_t*) Memory.ROM;
   uint32_t unread_bytes = filesize;
 
@@ -987,13 +818,13 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
   Memory.ROM_Size = filesize;
 
   while (unread_bytes) {
-    UINT bytes_read;
+    uint32_t bytes_read;
     if (unread_bytes < readlen)
       readlen = unread_bytes;
-    fr = f_read(&fil, buf, readlen /* read len */, &bytes_read);
+    fr = em_f_read(buf, readlen, &bytes_read);
     buf += bytes_read;
     unread_bytes -= bytes_read;
-    if ((fr != FR_OK) && unread_bytes) {
+    if (!fr && unread_bytes) {
       em_printf("read error occured, still %d unread bytes. FR is: %d\n", (int) unread_bytes, fr);
       ret = ERR_SD_READING;
       goto bailout;
@@ -1011,7 +842,7 @@ int load_rom_from_sd(char* filename, gbuffer_t fb) {
   
 bailout:
 
-  f_close(&fil);
+  em_f_close();
   
   return ret;
 }
@@ -1050,7 +881,7 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
     step = 10;
 
   while (1) {
-    lcd.get_backbuffer(&fb_back);
+    em_get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
     if (menu_first_run)
       stars_draw(fb_back);
@@ -1081,7 +912,7 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
 
     draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
     
-    lcd.request_pageflip();
+    em_request_pageflip();
 
     ctrl_button_state_update();
 
@@ -1104,7 +935,7 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
         value = 100;
 
       if (brightness && value > 0)
-        lcd_backlight_set(value);
+        em_lcd_backlight_set(value);
 
       if ( ctrl_is_pressed(BUTTON_A) ||
            ctrl_is_pressed(BUTTON_B) ||
@@ -1210,7 +1041,7 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, int delay,
   uint32_t timer = millis();
 
   while (!timed || (millis() - timer < delay) ) {
-    lcd.get_backbuffer(&fb_back);
+    em_get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
     if (menu_first_run)
       stars_draw(fb_back);
@@ -1424,7 +1255,7 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, int delay,
 
     draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
     
-    lcd.request_pageflip();
+    em_request_pageflip();
 
     ctrl_button_state_update();
 
@@ -1526,13 +1357,13 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
   gbuffer_t thumbnail;
   bool img_valid = false;
   
-  if (gbuf_create(&thumbnail, SNES_WIDTH / 2, SNES_HEIGHT / 2, (void*) sfe_mem_malloc(SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2)) != BUF_SUCCESS) {
+  if (gbuf_create(&thumbnail, SNES_WIDTH / 2, SNES_HEIGHT / 2, (void*) em_psram_malloc(SNES_WIDTH / 2 * SNES_HEIGHT / 2 * 2)) != BUF_SUCCESS) {
     em_printf("Error: Cannot allocate PSRAM\n");
     goto leave;
   }
 
   while (1) {
-    lcd.get_backbuffer(&fb_back);
+    em_get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
     if (menu_first_run)
       stars_draw(fb_back);
@@ -1649,7 +1480,7 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
     }
 
     draw_battery(DRAW_BATTERY_X, DRAW_BATTERY_Y, pwr_get_bat_level(4), fb_back);
-    lcd.request_pageflip();
+    em_request_pageflip();
 
     ctrl_button_state_update();
 
@@ -1700,17 +1531,13 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
 leave:
 
   if (gbuf_get_dat_ptr(thumbnail))
-    sfe_mem_free((void*) gbuf_get_dat_ptr(thumbnail));
+    em_psram_free((void*) gbuf_get_dat_ptr(thumbnail));
 
   return cur_itm;
 
 }
 
-static void call_flash_range_erase(void *param) {
-    uint32_t offset = (uint32_t)param;
-    flash_range_erase(offset, FLASH_SECTOR_SIZE);
-}
-
+#if 0
 int copy_rom_to_flash(gbuffer_t fb) {
 
   //if (!psram_rom)
@@ -1765,48 +1592,47 @@ int copy_rom_to_flash(gbuffer_t fb) {
 
   rom_loaded = true;
 
-  //sfe_mem_free(psram_rom);
+  //em_psram_free(psram_rom);
   //psram_rom = (uint8_t*) NULL;
-  flash_flush_cache();
+  em_flush_cache();
 
   return 0;
 
 }
+#endif
 
 int menu_loadfile(gbuffer_t fb) {
-  char* buffer;
   int res = 0;
   int ret = 0;
-  buffer = (char*) sfe_mem_malloc(DIRECTORY_BUFFER_SIZE + 1000);
-  char* filename = &buffer[DIRECTORY_BUFFER_SIZE];
-  char* buf_tmp;
+  char* buffer = (char*) em_psram_malloc(DIRECTORY_BUFFER_SIZE);
+  char* filename = (char*) em_psram_malloc(520);
 
-  if (!buffer)
-    return ERR_PSRAM;
+  if (!buffer || !filename) {
+    ret = ERR_PSRAM;
+    goto bailout;
+  }
 
-  // add go back at top of list
-  int pos = 0;
-  strcpy(buffer, str_sel_rom);
-  pos = strlen(buffer) + 1;
-  strcpy(&buffer[pos], str_go_back);
-  pos += strlen(&buffer[pos]);
-  
-  res = get_directory(rom_directory, &buffer[pos + 1]);
-  if (res != 0) {
+  clear_item_buffer(buffer);
+
+  res = em_get_directory((char*) rom_directory, buffer);
+
+  if (!res) {
     ret = ERR_SD_OPEN_DIR;
     goto bailout;
   }
 
   printf("%d roms found", get_item_cnt(buffer) - 1);
-  if (get_item_cnt(buffer) == 2) {  // 2 - caption - go_back
+  if (get_item_cnt(buffer) == 2) {
     ret = ERR_NO_ROMS_FOUND;
     goto bailout;
   }
 
+  // add caption and "go back" at top of list
+  insert_item_aligned(0, (char*) str_sel_rom, buffer);
+  insert_item_aligned(1, (char*) str_go_back, buffer);
+
   // add go back at bottom of list
-  buf_tmp = get_item(get_item_cnt(buffer) - 1, buffer);
-  strcpy(&buf_tmp[strlen(buf_tmp) + 1], str_go_back);
-  buf_tmp[strlen(buf_tmp) + 1 + strlen(str_go_back) + 2] = terminatorstring;
+  add_item_aligned((char*) str_go_back, buffer);
 
   res = selection_menu((char*) buffer, false, false, 0, fb);
   em_printf("Selection is %d of %d\n", res, get_item_cnt(buffer));
@@ -1826,7 +1652,9 @@ int menu_loadfile(gbuffer_t fb) {
     goto bailout;
   }
 
-  xip_cache_clean_all();
+#if 0
+  em_flush_cache();
+#endif
 
   Memory.ROM_is_writable = true;
 
@@ -1848,8 +1676,12 @@ int menu_loadfile(gbuffer_t fb) {
 
  bailout:
 
+  // mind sequence
+  if (filename)
+    em_psram_free((void*) filename);
+
   if (buffer)
-    sfe_mem_free((void*) buffer);
+    em_psram_free((void*) buffer);
 
   return ret;
 }
@@ -1861,14 +1693,20 @@ void emumgr_menu(gbuffer_t fb) {
     emulator_state.show_fps = false;
 
     stars_init();
+#ifdef HEADER_ROM
+    Memory.ROM_is_writable = false;
+    Memory.ROM = (uint8_t*) ROM_DATA;
+    Memory.ROM_Size = ROM_SIZE;
+#endif
+
   }
 
   gbuffer_t fb_saved;
   int res;
   int main_choice, sub_choice;
-  char* char_tmp = (char*) sfe_mem_malloc(520);
+  char* char_tmp = (char*) em_psram_malloc(520);
 
-  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) sfe_mem_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS) {
+  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) em_psram_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS) {
     em_printf("Error: Cannot allocate PSRAM\n");
     return;
   }
@@ -1877,8 +1715,8 @@ void emumgr_menu(gbuffer_t fb) {
   blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_saved);
 
   snd_mute();
-  sd_init();
-  //if (!sd_init())
+  em_sd_init();
+  //if (!em_sd_init())
   //  message(str_err_sd_mount, true, 1000, fb_saved);
   in_menu = true;
 
@@ -1905,7 +1743,7 @@ void emumgr_menu(gbuffer_t fb) {
           message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }
-        if (!sd_init()) {
+        if (!em_sd_init()) {
           message(str_err_sd_mount, true, 0, fb_saved);
           break;
         }
@@ -1920,11 +1758,11 @@ void emumgr_menu(gbuffer_t fb) {
             case SUCCESS:
               goto leave;
             case ERR_SD_OPEN_FIL:
-              sd_deinit();
+              em_sd_deinit();
               message(str_err_open_file, true, 0, fb_saved);
               break;
             case ERR_SD_READING:
-              sd_deinit();
+              em_sd_deinit();
               message(str_err_read_file, true, 0, fb_saved);
               break;
             default:
@@ -1937,12 +1775,12 @@ void emumgr_menu(gbuffer_t fb) {
           message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }
-        if (!sd_init()) {
+        if (!em_sd_init()) {
           message(str_err_sd_mount, true, 0, fb_saved);
           break;
         }
         strcpy(char_tmp,  SAVESTATE_DIRECTORY);
-        f_mkdir(char_tmp);
+        em_f_mkdir(char_tmp);
         sub_choice = savestate_selector(save_menu, char_tmp, fb_saved);
         if ((sub_choice >= 0) && (sub_choice < MAX_NUM_SAVESTATES)) {
           strcpy(char_tmp,  SAVESTATE_DIRECTORY);
@@ -1955,15 +1793,15 @@ void emumgr_menu(gbuffer_t fb) {
             case SUCCESS:
               strcat(char_tmp, ".img");
               screenshot_saver(char_tmp, fb_saved);
-              //sd_deinit();
+              //em_sd_deinit();
               message(str_gamestate_saved, true, MESSAGE_DELAY_BLINKOFANEYE, fb_saved);
               goto leave;
             case ERR_SD_OPEN_FIL:
-              sd_deinit();
+              em_sd_deinit();
               message(str_err_open_file, true, 0, fb_saved);
               break;
             case ERR_SD_WRITING:
-              sd_deinit();
+              em_sd_deinit();
               message(str_err_write_file, true, 0, fb_saved);
               break;
             default:
@@ -1985,7 +1823,7 @@ void emumgr_menu(gbuffer_t fb) {
           emulator_state.brightness = sub_choice;
         break;
       case 5:
-        if (!sd_init()) {
+        if (!em_sd_init()) {
           message(str_err_sd_mount, true, 0, fb_saved);
           break;
         }
@@ -2003,12 +1841,12 @@ void emumgr_menu(gbuffer_t fb) {
             em_printf("no psram\n");
             break;
           case ERR_SD_OPEN_DIR:
-            sd_deinit();
-            message(str_err_open_dir, true, 0, fb_saved);
             em_printf("cannot read dir\n");
+            em_sd_deinit();
+            message(str_err_open_dir, true, 0, fb_saved);
             break;
           case ERR_SD_OPEN_FIL:
-            sd_deinit();
+            em_sd_deinit();
             message(str_err_open_file, true, 0, fb_saved);
             em_printf("cannot open file\n");
             break;
@@ -2017,7 +1855,7 @@ void emumgr_menu(gbuffer_t fb) {
             em_printf("error reading file\n");
             break;
           case ERR_SD_READING:
-            sd_deinit();
+            em_sd_deinit();
             message(str_err_read_file, true, 0, fb_saved);
             em_printf("error loading rom\n");
             break;
@@ -2089,15 +1927,16 @@ void emumgr_menu(gbuffer_t fb) {
 
 leave:
 
-  sd_deinit();
+  em_sd_deinit();
   if (!emulator_state.muted)
     snd_unmute();
 
+  // mind sequence
   if (gbuf_get_dat_ptr(fb_saved))
-    sfe_mem_free((void*) gbuf_get_dat_ptr(fb_saved));
+    em_psram_free((void*) gbuf_get_dat_ptr(fb_saved));
 
   if (char_tmp)
-    sfe_mem_free((void*) char_tmp);
+    em_psram_free((void*) char_tmp);
 
   if (menu_first_run) {
     menu_first_run = 0;
