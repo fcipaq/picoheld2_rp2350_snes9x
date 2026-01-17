@@ -23,6 +23,8 @@
 
 #define STR_VERSION "v0.9"
 
+#include "gbuffers.h"
+
 typedef struct {
   volatile int volume;
   volatile bool muted;
@@ -31,6 +33,7 @@ typedef struct {
   bool show_fps;
   bool manual_framedrop;
   bool copy_rom_to_flash;
+  bool psram_subscreen;
 } emulator_state_t;
 
 void emumgr_menu(gbuffer_t fb);

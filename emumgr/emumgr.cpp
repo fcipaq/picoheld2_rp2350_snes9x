@@ -23,6 +23,7 @@
 
 /* Pico Held hw library */
 #include <picoengine.h>
+#include "hwcfg.h"
 
 #include "emumgr_hal.h"
 #include "emumgr.h"
@@ -52,7 +53,7 @@ extern "C" {
 
 #include <utility>  // debug printf
 
-#define HEADER_ROM
+//#define HEADER_ROM
 #ifdef HEADER_ROM
 #include "../../rom_super_mario_world.h"
 #endif
@@ -81,11 +82,7 @@ int translucency = 50;
 uint32_t brownout_det_timer = 0;
 bool brownout_det = false;
 bool in_menu = false;
-#ifdef HEADER_ROM
-bool rom_loaded = true;
-#else
-bool rom_loaded = false;  // it means, there is no ROM data @ Memory.ROM yet
-#endif
+int rom_loaded = 0;  // it means, there is no ROM data @ Memory.ROM yet
 
 // starfield
 #define NUM_STARS (50)
@@ -126,8 +123,8 @@ int supply_type_last = -1;
 #define BAT_CRIT_BLINK_DURATION (500)
 #define BROWNOUT_DELAY (120000)  // time to shutdown system
 
-#define SAVESTATE_DIRECTORY "/roms/snes/save/"
-#define ROM_DIRECTORY "/roms/snes/"
+#define SAVESTATE_DIRECTORY "roms/snes/save/"
+#define ROM_DIRECTORY "roms/snes/"
 #define MAX_NUM_SAVESTATES (6)
 
 #define SUCCESS 0
@@ -174,7 +171,7 @@ const char str_err_write_file[] = { STR_ERROR"\0"\
                                     STR_ERR_OPEN_FILE"\0"\
                                     MENU_LST };
 
-const char main_menu_items[] = { STR_MAIN_TITLE"\0"\
+const char* main_menu_items = { STR_MAIN_TITLE"\0"\
 					 									     STR_LAUNCH"\0"\
                                  STR_LOAD_STATE"\0"\
                                  STR_SAVE_STATE"\0"\
@@ -190,6 +187,7 @@ const char settings_menu_items[] = { STR_OPTIONS"\0"\
 					 									         STR_FPS"\0"\
                                      STR_BAT"\0"\
                                      STR_FRAMEDROP_MODE "\0"\
+                                     STR_SUBSCREEN_MEM "\0"\
                                      STR_GO_BACK"\0"\
                                      MENU_LST };
 
@@ -214,6 +212,12 @@ const char* snd_menu = STR_SOUND;
 const char* rom_directory = ROM_DIRECTORY;
 
 const char* str_sel_rom = STR_SEL_ROM;
+
+const char* str_subscreen_mem =  STR_SUBSCREEN_MEM;
+
+const char* str_subscreen_psram =  STR_SUBSCREEN_PSRAM;
+
+const char* str_subscreen_shared =  STR_SUBSCREEN_SHARED;
 
 const char str_loading[] = {  STR_LOADING"\0"\
                               MENU_LST };
@@ -288,6 +292,7 @@ void stars_draw(gbuffer_t fb) {
 }
 
 void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
+#if 0
   if (pwr_get_source() != PWR_ON_GRD) {
       if ((pwr_get_bat_vol() <= (PWR_BAT_MIN_VOL + 50)) && !brownout_det) {
       brownout_det_timer = millis();
@@ -302,6 +307,7 @@ void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
   } else {
     brownout_det = false;
   }
+#endif
 
   if (!emulator_state.show_bat && !brownout_det && !in_menu)
     return;
@@ -367,8 +373,6 @@ int read_image_to_gbuf(char* filename, gbuffer_t fb) {
     em_printf("Read error occured. FR is: %d\n", fr);
     ret = ERR_SD_READING;
   }    
-
-  bailout:
 
   em_f_close();
 
@@ -1590,7 +1594,7 @@ int copy_rom_to_flash(gbuffer_t fb) {
   Memory.ROM = (uint8_t*) rom_flash_address + XIP_BASE;
   Memory.ROM_is_writable = false;
 
-  rom_loaded = true;
+  rom_loaded = 1;
 
   //em_psram_free(psram_rom);
   //psram_rom = (uint8_t*) NULL;
@@ -1666,7 +1670,7 @@ int menu_loadfile(gbuffer_t fb) {
     goto bailout;
   }
 
-  rom_loaded = true;
+  rom_loaded = 2;
  
   for (int i = 0; i < SRAM_SIZE; i++)
     Memory.SRAM[i] = 0;
@@ -1683,9 +1687,27 @@ int menu_loadfile(gbuffer_t fb) {
   return ret;
 }
 
+void bl_fade_in() {
+#define BL_FADE_STEPS (50)
+  float delta = (float) emulator_state.brightness / (float) BL_FADE_STEPS;
+  float value = 0;
+
+  for (int i = 0; i < BL_FADE_STEPS; i++) {
+    em_lcd_backlight_set((int) value);
+    value += delta;
+    uint32_t timer = micros();
+    while (micros() - timer < 5000);
+  }
+
+  em_lcd_backlight_set((int) emulator_state.brightness);
+
+}
+
 void emumgr_menu(gbuffer_t fb) {
   if (menu_first_run) {
     // TODO: fixme
+    emulator_state.brightness = 40;
+    emulator_state.volume = 2;
     emulator_state.show_bat = false;
     emulator_state.show_fps = false;
 
@@ -1694,11 +1716,10 @@ void emumgr_menu(gbuffer_t fb) {
     Memory.ROM_is_writable = false;
     Memory.ROM = (uint8_t*) ROM_DATA;
     Memory.ROM_Size = ROM_SIZE;
-    if (!LoadROM(NULL))
-      rom_loaded = true;
-
+    rom_loaded = 1;
 #endif
 
+    bl_fade_in();
   }
 
   gbuffer_t fb_saved;
@@ -1706,12 +1727,17 @@ void emumgr_menu(gbuffer_t fb) {
   int main_choice, sub_choice;
   char* char_tmp = (char*) em_psram_malloc(520);
 
+  if (!char_tmp) {
+    em_printf("Error: Cannot allocate PSRAM\n");
+    return;
+  }
+
   if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) em_psram_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS) {
     em_printf("Error: Cannot allocate PSRAM\n");
     return;
   }
 
-  //save original screen contents
+  // save original screen contents
   blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_saved);
 
   snd_mute();
@@ -1724,22 +1750,29 @@ void emumgr_menu(gbuffer_t fb) {
     main_choice = selection_menu((char*) main_menu_items, true, false, true, 0, fb_saved);
     switch (main_choice) {
       case 0:
-        if (rom_loaded) {
-          if (menu_first_run) {
+        switch (rom_loaded) {
+          case 0:
+            message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
+            break;
+          case 1:
             S9xReset();
-          
+        
             if (!LoadROM(NULL))
               message(str_err_rom, true, 0, fb_saved);
-          }
-      
-          goto leave;
-        } else {
-              message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
+            rom_loaded = 2;
+
+            goto leave;
+            break;
+          case 2:
+            goto leave;
+            break;
+          default:
+            break;
         }
         
         break;
       case 1:
-        if (!rom_loaded) {
+        if (rom_loaded == 0) {
           message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }
@@ -1771,7 +1804,7 @@ void emumgr_menu(gbuffer_t fb) {
         }          
         break;
       case 2:
-        if (!rom_loaded) {
+        if (rom_loaded == 0) {
           message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }
@@ -1820,7 +1853,7 @@ void emumgr_menu(gbuffer_t fb) {
         sub_choice = slider_menu((char*) bri_menu, emulator_state.brightness, 10, 1, fb_saved);
         if ((sub_choice >= 0) && (sub_choice <= 100))
           if (sub_choice == 0) sub_choice = 1;
-          emulator_state.brightness = sub_choice;
+        emulator_state.brightness = sub_choice;
         break;
       case 5:
         if (!em_sd_init()) {
@@ -1878,7 +1911,7 @@ void emumgr_menu(gbuffer_t fb) {
               strcat(char_tmp, STR_ON);
             else
               strcat(char_tmp, STR_OFF);
-            char_tmp[strlen(char_tmp) + 2] = terminatorstring;
+            char_tmp[strlen(char_tmp) + 1] = terminatorstring;
 
             message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
             break;
@@ -1891,7 +1924,7 @@ void emumgr_menu(gbuffer_t fb) {
               strcat(char_tmp, STR_ON);
             else
               strcat(char_tmp, STR_OFF);
-            char_tmp[strlen(char_tmp) + 2] = terminatorstring;
+            char_tmp[strlen(char_tmp) + 1] = terminatorstring;
 
             message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
 
@@ -1905,7 +1938,20 @@ void emumgr_menu(gbuffer_t fb) {
               strcat(char_tmp, STR_MANUAL);
             else
               strcat(char_tmp, STR_AUTO);           
-            char_tmp[strlen(char_tmp) + 2] = terminatorstring;
+            char_tmp[strlen(char_tmp) + 1] = terminatorstring;
+            message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
+
+            break;
+          case 3:
+            emulator_state.psram_subscreen = !emulator_state.psram_subscreen;
+
+            strcpy(char_tmp, str_subscreen_mem);
+            strcat(char_tmp, ": ");
+            if (emulator_state.psram_subscreen)
+              strcat(char_tmp, str_subscreen_psram);
+            else
+              strcat(char_tmp, str_subscreen_shared);
+            char_tmp[strlen(char_tmp) + 1] = terminatorstring;
             message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
 
             break;

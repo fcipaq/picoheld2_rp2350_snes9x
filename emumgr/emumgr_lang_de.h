@@ -26,7 +26,7 @@
 
 #pragma once
 
-#define STR_MAIN_TITLE "Hauptmen\xfc"
+#define STR_MAIN_TITLE "Pico Held 2 Snes"
 
 #define STR_ENABLED "aktiviert"
 #define STR_DISABLED "deaktiviert"
@@ -64,6 +64,9 @@
 #define STR_BAT "Batterieanzeige"
 #define STR_FPS "FPS-Anzeige"
 #define STR_FRAMEDROP_MODE "Framedrop-Modus"
+#define STR_SUBSCREEN_MEM "Subscreen-Speicher"
+#define STR_SUBSCREEN_PSRAM "PSRAM"
+#define STR_SUBSCREEN_SHARED "geteilt"
 
 #define STR_ABOUT_TEXT "Snes9x on the Pico Held 2\0"\
                        " \0 "\

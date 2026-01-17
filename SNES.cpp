@@ -49,11 +49,14 @@ extern "C" {
 
 #define AUDIO_ENABLE
 
+// display
+uint8_t ZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
+uint8_t SubZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
+
 LCD_DPI lcd = LCD_DPI();
 
 gbuffer_t fb_back;
-extern emulator_state_t emulator_state;
-/* ---------- LCD END ------------*/
+uint8_t* subscreen;
 
 // snes stuff
 bool overclock_cycles = false;
@@ -71,6 +74,9 @@ mutex_t audio_generate;
 int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE / 47] __attribute__((aligned(4))); // 4 kb
 #endif
 
+// misc
+extern emulator_state_t emulator_state;
+
 // --- MAIN
 static void update_keymap(int id)
 {
@@ -85,9 +91,6 @@ static bool reset_handler(bool hard)
     return true;
 }
 
-uint8_t ZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
-uint8_t SubZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
-
 bool S9xInitDisplay(void)
 {
     lcd.get_backbuffer(&fb_back);
@@ -96,7 +99,8 @@ bool S9xInitDisplay(void)
     GFX.Pitch = SNES_WIDTH * 2;
     GFX.ZPitch = SNES_WIDTH;
 
-    GFX.SubScreen = GFX.Screen; //(uint8_t*) sfe_mem_malloc(GFX.Pitch * SNES_HEIGHT_EXTENDED);
+    subscreen = (uint8_t*) sfe_mem_malloc(GFX.Pitch * SNES_HEIGHT_EXTENDED);
+    GFX.SubScreen = GFX.Screen;
     GFX.ZBuffer = ZBuffer; //(uint8_t*) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);
 
     GFX.SubZBuffer = SubZBuffer; // 56 kB // (uint8_t *) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);  // 56 kB
@@ -284,21 +288,6 @@ void print_memory_usage() {
     printf("Largest free block: %d bytes\n", info.ordblks);
 }
 
-void bl_fade_in() {
-#define BL_FADE_STEPS (50)
-  float delta = (float) emulator_state.brightness / (float) BL_FADE_STEPS;
-  float value = 0;
-
-  for (int i = 0; i < BL_FADE_STEPS; i++) {
-    lcd_backlight_set((int) value);
-    value += delta;
-    sleep_ms(5);
-  }
-
-  lcd_backlight_set((int) emulator_state.brightness);
-
-}
-
 int main(void)
 {
   setup();
@@ -331,8 +320,6 @@ int main(void)
 
   if (!S9xInitGFX())
       emu_panic("Graphics init failed!\n");
-
-  bl_fade_in();
 
   emumgr_menu(fb_back);
 
@@ -402,7 +389,7 @@ int main(void)
         lcd.get_psram_backbuffer(&fb_back_psram);
 #endif
         GFX.Screen = (uint8_t*) fb_back.data;
-        GFX.SubScreen = GFX.Screen;
+        GFX.SubScreen = emulator_state.psram_subscreen ? subscreen : GFX.Screen;
       }
 
       S9xMainLoop();
