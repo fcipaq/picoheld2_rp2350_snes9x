@@ -76,8 +76,8 @@ gbuf_results_t gbuf_create(gbuffer16_t* buf, uint16_t width, uint16_t height, vo
 
   buf->data = (uint16_t*) data_buffer;
 
-  for (uint32_t i = 0; i < width * height; i++)
-    buf->data[i] = 0;
+  //for (uint32_t i = 0; i < width * height; i++)
+  //  buf->data[i] = 0;
 
   buf->width = width;
   buf->height = height;
