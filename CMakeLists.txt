@@ -36,11 +36,13 @@ project(SNES C CXX ASM)
 pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
-
 add_executable(SNES SNES.cpp )
 
 pico_set_program_name(SNES "SNES")
 pico_set_program_version(SNES "0.1")
+
+# decrease stack size of core 1
+#pico_set_linker_script(SNES ${CMAKE_CURRENT_LIST_DIR}/memmap_custom.ld)
 
 # Generate PIO header
 #pico_generate_pio_header(SNES ${CMAKE_CURRENT_LIST_DIR}/blink.pio)

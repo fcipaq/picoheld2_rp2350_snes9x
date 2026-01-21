@@ -42,10 +42,11 @@
 uint8_t snd_init_complete = 0;
 bool snd_pio_complete = false;
 
-mutex_t snd_ready;
-volatile int16_t* snd_next_buffer = NULL;
-volatile int snd_next_buffer_len = 0;
-int preload_buffer;
+semaphore_t bufs_avail;
+#define NUM_SND_BUFS (3)
+volatile int16_t* snd_next_buffer[NUM_SND_BUFS];
+volatile int snd_next_buffer_len[NUM_SND_BUFS];
+bool buffer_underrun;
 
 /* ----------------------------- PIO -----------------------------*/
 PIO snd_pio = pio1;
@@ -71,9 +72,20 @@ void __isr snd_dma_handler() {
   // clear irq flag
   dma_channel_acknowledge_irq1(snd_dma_chan);
 
-  dma_channel_configure(snd_dma_chan, &snd_dma_config, &snd_pio->txf[snd_pio_sm], snd_next_buffer, snd_next_buffer_len, true);
+#if 1
+  if (sem_available(&bufs_avail) < NUM_SND_BUFS) {
 
-  mutex_exit(&snd_ready);
+    for (int i = 0; i < NUM_SND_BUFS - 1; i++) {
+      snd_next_buffer[i] = snd_next_buffer[i + 1];
+      snd_next_buffer_len[i] = snd_next_buffer_len[i + 1];
+    }
+   
+    dma_channel_configure(snd_dma_chan, &snd_dma_config, &snd_pio->txf[snd_pio_sm], snd_next_buffer[0], snd_next_buffer_len[0], true); 
+    sem_release(&bufs_avail);
+
+  }
+#endif
+
 
 }
 
@@ -204,19 +216,21 @@ bool snd_pio_init() {
  * the sound data could not be transmitted.
  */
 void snd_enqueue_buffer_blocking(int16_t* snd_buffer, int len) {
-  if (preload_buffer > 1) {
-    while (!mutex_try_enter(&snd_ready, NULL))
-      tight_loop_contents();
+  sem_acquire_blocking(&bufs_avail);
+
+  int buf_index = NUM_SND_BUFS - sem_available(&bufs_avail) - 1;
+
+  // underrun detected
+  if (buf_index == 0)
+    buffer_underrun = true;
+
+  snd_next_buffer[buf_index] = snd_buffer;
+  snd_next_buffer_len[buf_index] = len;
+
+  if (buffer_underrun && (buf_index == NUM_SND_BUFS - 1)) {
+    dma_channel_configure(snd_dma_chan, &snd_dma_config, &snd_pio->txf[snd_pio_sm], snd_next_buffer[0], snd_next_buffer_len[0], true);
+    buffer_underrun = false;
   }
-    
-  if (preload_buffer == 1)
-    dma_channel_configure(snd_dma_chan, &snd_dma_config, &snd_pio->txf[snd_pio_sm], snd_next_buffer, snd_next_buffer_len, true);
-
-  snd_next_buffer = snd_buffer;
-  snd_next_buffer_len = len;
-
-  if (preload_buffer < 2)
-    preload_buffer++;
 
 }
 
@@ -228,8 +242,7 @@ bool snd_init() {
   gpio_set_dir(PIN_SND_EN, GPIO_OUT);
   snd_mute();
 
-  mutex_init(&snd_ready);
-  mutex_try_enter(&snd_ready, NULL);
+  sem_init(&bufs_avail, NUM_SND_BUFS, NUM_SND_BUFS);
 
   if (!snd_pio_init())
     return SND_PIO_ERR;

@@ -98,8 +98,9 @@ class LCD_DPI : public LCD
     //color_t m_black_line[256 /* SNES_WIDTH */] __attribute__((aligned(4)));
 
     // rotation LUT
-    uint32_t* m_fb_rlut; //[1024] __attribute__((aligned(4096));
-    uint32_t* m_fb_rlut_backup[NUM_FB_MAX]; //[1024];
+    uint32_t m_fb_rlut[1024] __attribute__((aligned(4096)));
+    uint32_t m_fb_rlut_backup[1024];
+    uint32_t* m_fb_rlut_backup_psram[NUM_FB_MAX];
       
     // color LUT (aka palette)
     #if LCD_COLORDEPTH==8

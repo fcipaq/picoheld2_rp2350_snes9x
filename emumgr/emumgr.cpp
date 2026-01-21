@@ -53,7 +53,7 @@ extern "C" {
 
 #include <utility>  // debug printf
 
-//#define HEADER_ROM
+#define HEADER_ROM
 #ifdef HEADER_ROM
 #include "../../rom_super_mario_world.h"
 #endif
@@ -292,7 +292,7 @@ void stars_draw(gbuffer_t fb) {
 }
 
 void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
-#if 0
+#if 1
   if (pwr_get_source() != PWR_ON_GRD) {
       if ((pwr_get_bat_vol() <= (PWR_BAT_MIN_VOL + 50)) && !brownout_det) {
       brownout_det_timer = millis();

@@ -48,12 +48,10 @@
 #include "pico/platform.h"
 #include "hardware/watchdog.h"
 
-#ifdef ENABLE_PSRAM_FB
 extern "C" {
 // PSRAM
 #include "sparkfun_pico/sfe_pico.h"
 }
-#endif
 
 #include "lcd_dpi_init.h"
 #include "../backlight/backlight.h"
@@ -167,10 +165,42 @@ void __no_inline_not_in_flash_func(LCD_DPI::retrace)() {
 
 }
 
+bool once = false;
+int fb_lst = - 1;;
+
 void __no_inline_not_in_flash_func(LCD_DPI::refresh_exec)() {
   // reset RLUT
-  for (int i = 0; i < (1u << m_dma_ring_buffer_size); i++)
-    m_fb_rlut[i] = m_fb_rlut_backup[m_fb_cur][i];
+  
+  /* Now, here some scarifices had to be made: usually you reload
+   * the rlut just from RAM. However, there is so little RAM left
+   * that the backup LUTs won't fit in. So, there is one 
+   * LUT for every FB, but the LUT does not get reloaded, instead
+   * it is being recovered, saving 4 KB of RAM.
+   * Now, on first run, the LUT gets corrupted (reason unclear, 
+   * probably a mismatch/offset on first DMA run between src
+   * and dst). So RLUT has to be reloaded from PSRAM only once.
+   */
+
+  if (!once) {
+    for (int i = 0; i < (1u << m_dma_ring_buffer_size); i++) {
+      m_fb_rlut[i] = m_fb_rlut_backup_psram[(m_fb_cur + 1) % 2][i];
+      m_fb_rlut_backup[i] = m_fb_rlut_backup_psram[m_fb_cur][i];
+    }
+    once = true;
+  } else {
+    if (fb_lst != m_fb_cur) {
+      for (int i = 0; i < (1u << m_dma_ring_buffer_size); i++) {
+        uint32_t a = m_fb_rlut[i] + 480;
+        m_fb_rlut[i] = m_fb_rlut_backup[i];
+        m_fb_rlut_backup[i] = a;
+      }
+      fb_lst = m_fb_cur;
+    } else {
+      for (int i = 0; i < (1u << m_dma_ring_buffer_size); i++) {
+        m_fb_rlut[i] += 480;
+      }
+    }
+  }
 
   dma_channel_set_read_addr(m_dma_chan[2], m_fb_rlut, true);
   dma_channel_set_write_addr(m_dma_chan[3], m_fb_rlut, true);
@@ -614,24 +644,6 @@ lcd_error_t LCD_DPI::deinit() {
     m_pio_enabled = false;
   }
 
-  if (m_fb_rlut) {
-    free((void*) m_fb_rlut);
-    m_fb_rlut = NULL;
-  }
-
-  for (int i = 0; i < m_num_fb; i++) {
-#if 0
-    if (m_fb[i]) {
-      free((void*) m_fb[i]);
-      m_fb[i] = NULL;
-    }
-#endif
-    if (m_fb_rlut_backup[i]) {
-      free((void*) m_fb_rlut_backup[i]);
-      m_fb_rlut_backup[i] = NULL;
-    }
-  }
-
   m_lcd_enabled = false;
   lcd_this = NULL;
 
@@ -682,7 +694,7 @@ void LCD_DPI::build_fb_rot_lut() {
     }
 
     for (int i = 0; i < (1u << m_dma_ring_buffer_size); i++)
-      m_fb_rlut_backup[h][i] = m_fb_rlut[i];
+      m_fb_rlut_backup_psram[h][i] = m_fb_rlut[i];
 
   }
 
@@ -780,9 +792,16 @@ lcd_error_t LCD_DPI::init(uint16_t num_fb, int auto_refresh, int scale) {
       m_fb_psram[h] = 0;
 
 #endif
+  for (int i = 0; i < NUM_FB_MAX; i++) {
+    m_fb_rlut_backup_psram[i] = (uint32_t *) sfe_mem_malloc((1u << m_dma_ring_buffer_size) * 4 /* 4 bytes */);
+    if (!m_fb_rlut_backup_psram[i]) {
+    res = LCD_MEM_ERR;
+    goto bailout;
+    }
+  }
 
 // TODO only when rotated
-#if 1
+#if 0
   m_fb_rlut = (uint32_t *) aligned_alloc(1u << (m_dma_ring_buffer_size + 2 /* 4 bytes */), (1u << m_dma_ring_buffer_size) * 4 /* 32 bit addresses */);
   if ((!m_fb_rlut) || (((uint32_t) m_fb_rlut % (1u << (m_dma_ring_buffer_size + 2 /* 4 bytes */))) != 0)) {
     res = LCD_MEM_ERR;

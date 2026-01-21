@@ -66,12 +66,15 @@ extern SGFX GFX;  // snes9x API
 volatile int target_fps;
 mutex_t audio_generate;
 
+#define TARGET_FPS (50)
+
 // sound
+#define AUDIO_BUF_MARGIN 108 / 100
 #define NUM_ADUDIO_BUF (3)
 #define AUDIO_SAMPLE_RATE (16000)  // 32000 is (of course) slower
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
 #ifdef AUDIO_ENABLE
-int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE / 47] __attribute__((aligned(4))); // 4 kb
+int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE * AUDIO_BUF_MARGIN / TARGET_FPS]  __attribute__((aligned(4), section(".scratch_y.parity"))); // 1.9 kb
 #endif
 
 // misc
@@ -101,9 +104,9 @@ bool S9xInitDisplay(void)
 
     subscreen = (uint8_t*) sfe_mem_malloc(GFX.Pitch * SNES_HEIGHT_EXTENDED);
     GFX.SubScreen = GFX.Screen;
-    GFX.ZBuffer = ZBuffer; //(uint8_t*) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);
+    GFX.ZBuffer = ZBuffer;
 
-    GFX.SubZBuffer = SubZBuffer; // 56 kB // (uint8_t *) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);  // 56 kB
+    GFX.SubZBuffer = SubZBuffer; // (uint8_t *) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);  // 56 kB
     
     return GFX.Screen && GFX.SubScreen && GFX.ZBuffer && GFX.SubZBuffer;
 }
@@ -172,7 +175,7 @@ void core1task() {
   flash_safe_execute_core_init();
 
 #ifdef AUDIO_ENABLE
-  int16_t* audio_buf_9x = (int16_t*) sfe_mem_malloc(AUDIO_SAMPLE_RATE / 47 * 2 * 2); // stereo  // add some margin (50 = 100%, 47 = 106%)  // 2.7 kb
+  int16_t* audio_buf_9x = (int16_t*) sfe_mem_malloc(AUDIO_SAMPLE_RATE * AUDIO_BUF_MARGIN / target_fps * 2 * 2); // 16 bit, stereo
   
   int ret = snd_init();
   if (ret != SND_SUCCESS)
@@ -182,7 +185,7 @@ void core1task() {
 
   int cur_audio_buf = 0;
 
-  int buffer_length = AUDIO_SAMPLE_RATE / target_fps * 1.02;  // add some margin to prevent crackling
+  int buffer_length = AUDIO_SAMPLE_RATE * AUDIO_BUF_MARGIN / target_fps;  // add some margin to prevent crackling
 
   while (1) {
     while (!mutex_try_enter(&audio_generate, NULL))
@@ -323,7 +326,7 @@ int main(void)
 
   emumgr_menu(fb_back);
 
-  target_fps = 50;//Memory.ROMFramesPerSecond;
+  target_fps = TARGET_FPS;//Memory.ROMFramesPerSecond;
   int frame_time = 1000000 / target_fps;
 
 #ifdef USE_BLARGG_APU
