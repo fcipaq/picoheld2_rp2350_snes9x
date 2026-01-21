@@ -1,6 +1,6 @@
 /*
-4 kb ram free
-
+0 kb ram free
+And Scratch Y heap overlaps stack. 
 */
 
 #include <picoengine.h>
@@ -32,6 +32,7 @@ extern "C" {
 #include "controls.h"
 
 #include "emumgr.h"
+#include "emumgr_hal.h"
 
 extern "C" {
 #include "snes9x/snes9x.h"
@@ -71,7 +72,7 @@ mutex_t audio_generate;
 // sound
 #define AUDIO_BUF_MARGIN 108 / 100
 #define NUM_ADUDIO_BUF (3)
-#define AUDIO_SAMPLE_RATE (16000)  // 32000 is (of course) slower
+#define AUDIO_SAMPLE_RATE (16000)  // 32000 is (of course) slower and needs more RAM
 #define AUDIO_LOW_PASS_RANGE ((60 * 65536) / 100)
 #ifdef AUDIO_ENABLE
 int16_t audio_buf[NUM_ADUDIO_BUF][AUDIO_SAMPLE_RATE * AUDIO_BUF_MARGIN / TARGET_FPS]  __attribute__((aligned(4), section(".scratch_y.parity"))); // 1.9 kb
@@ -96,7 +97,7 @@ static bool reset_handler(bool hard)
 
 bool S9xInitDisplay(void)
 {
-    lcd.get_backbuffer(&fb_back);
+    em_get_backbuffer(&fb_back);
     GFX.Screen = (uint8_t*) fb_back.data;
 
     GFX.Pitch = SNES_WIDTH * 2;
@@ -387,7 +388,7 @@ int main(void)
         dropped_frames++;
 
       if (IPPU.RenderThisFrame) {
-        lcd.get_backbuffer(&fb_back);
+        em_get_backbuffer(&fb_back);
 #ifdef ENABLE_PSRAM_FB
         lcd.get_psram_backbuffer(&fb_back_psram);
 #endif
@@ -476,10 +477,11 @@ int main(void)
     font_write_string(10, 10 + 90, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
 #endif
 
-    if (IPPU.RenderThisFrame == true) {
-      lcd.request_pageflip();
-    }
-     
+    if (IPPU.RenderThisFrame == true)
+      em_request_pageflip();
+
+    em_lcd_refresh();  // for FRR this does nothing
+
     /* ---------- LCD END------------*/
     IPPU.RenderThisFrame = true;
       

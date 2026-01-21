@@ -26,12 +26,15 @@
 #define DIRECTORY_MAX_ITEMS (100)
 #define DIRECTORY_BUFFER_SIZE (DIRECTORY_MAX_ITEMS * MAX_ITEM_LEN + 1)
 
+#define FLASH_ROM_ADDRESS (0x500000 + XIP_BASE)
+#define CAP_FLASH_ROM
 /* ============================================ HAL ===================================================*/
 bool em_hal_init();
 
 /* ============================================ LCD ===================================================*/
 void em_get_backbuffer(gbuffer_t* fb_back);
 void em_request_pageflip();
+void em_lcd_refresh();
 void em_lcd_backlight_set(int value);
 
 /* ============================================ PSRAM ===================================================*/

@@ -923,4 +923,18 @@ lcd_error_t LCD_DPI::request_pageflip() {
 
 }
 
+lcd_error_t LCD_DPI::refresh() {
+  if (m_refresh_mode == LCD_VRR_REFRESH) {
+    
+    // wait for vsync event
+    sem_acquire_blocking(&dma_tx_done);
+    cycle_bufs();
+    refresh_exec();
+  }
+  else
+    return LCD_RMOD_ERR;
+
+  return LCD_SUCCESS;
+}
+
 #endif // LCD_IF_DPI

@@ -53,14 +53,18 @@ extern "C" {
 
 #include <utility>  // debug printf
 
-#define HEADER_ROM
+#ifdef CAP_FLASH_ROM
+//#define HEADER_ROM
 #ifdef HEADER_ROM
 #include "../../rom_super_mario_world.h"
 #endif
-
-#define FLASH_ROM_ADDRESS (0x500000)
+#endif
 
 #define DEBUG_OUTPUT
+
+#define ROM_NOT_LOADED (0)
+#define ROM_IN_MEM (1)      // in memory but not loaded by the emulator
+#define ROM_LOADED (2)      // loaded by the emulator
 
 template<typename... Args>
 void em_printf(const char* format, Args&&... args) {
@@ -82,7 +86,7 @@ int translucency = 50;
 uint32_t brownout_det_timer = 0;
 bool brownout_det = false;
 bool in_menu = false;
-int rom_loaded = 0;  // it means, there is no ROM data @ Memory.ROM yet
+int rom_loaded = ROM_NOT_LOADED;  // it means, there is no ROM data @ Memory.ROM yet
 
 // starfield
 #define NUM_STARS (50)
@@ -1607,7 +1611,7 @@ int copy_rom_to_flash(gbuffer_t fb) {
   Memory.ROM = (uint8_t*) rom_flash_address + XIP_BASE;
   Memory.ROM_is_writable = false;
 
-  rom_loaded = 1;
+  rom_loaded = ROM_IN_MEM;
 
   //em_psram_free(psram_rom);
   //psram_rom = (uint8_t*) NULL;
@@ -1683,7 +1687,7 @@ int menu_loadfile(gbuffer_t fb) {
     goto bailout;
   }
 
-  rom_loaded = 2;
+  rom_loaded = ROM_LOADED;
  
   for (int i = 0; i < SRAM_SIZE; i++)
     Memory.SRAM[i] = 0;
@@ -1716,10 +1720,40 @@ void bl_fade_in() {
 
 }
 
+void load_rom_from_flash(gbuffer_t fb_saved) {
+#ifdef HEADER_ROM
+    Memory.ROM_is_writable = false;
+    Memory.ROM = (uint8_t*) ROM_DATA;
+    Memory.ROM_Size = ROM_SIZE;
+    rom_loaded = ROM_IN_MEM;
+#else
+    Memory.ROM_is_writable = false;
+    Memory.ROM = (uint8_t*) (uint32_t (FLASH_ROM_ADDRESS + 4));
+    Memory.ROM_Size = *((uint32_t*) (uint32_t FLASH_ROM_ADDRESS));
+    if (Memory.ROM_Size)
+      rom_loaded = ROM_IN_MEM;
+#endif
+
+    if (rom_loaded == ROM_IN_MEM) {
+      if (LoadROM(NULL))
+        rom_loaded = ROM_LOADED;
+      else
+        rom_loaded = ROM_NOT_LOADED;
+
+      // Some ROMs get patched and checksum then fails
+      //if (rom_loaded && (Memory.CalculatedChecksum != Memory.ROMChecksum))
+      //  rom_loaded = ROM_NOT_LOADED;
+
+      if (rom_loaded == ROM_NOT_LOADED)
+        message(str_err_rom, true, 0, fb_saved);
+
+    }  
+}
+
 void emumgr_menu(gbuffer_t fb) {
   if (menu_first_run) {
     em_hal_init();
-    
+
     // TODO: fixme
     emulator_state.brightness = 40;
     emulator_state.volume = 2;
@@ -1727,16 +1761,6 @@ void emumgr_menu(gbuffer_t fb) {
     emulator_state.show_fps = false;
 
     stars_init();
-#ifdef HEADER_ROM
-    Memory.ROM_is_writable = false;
-    Memory.ROM = (uint8_t*) ROM_DATA;
-    Memory.ROM_Size = ROM_SIZE;
-    if (!LoadROM(NULL))
-     rom_loaded = 1;
-    else
-     rom_loaded = 2;
-#endif
-
     bl_fade_in();
   }
 
@@ -1764,6 +1788,11 @@ void emumgr_menu(gbuffer_t fb) {
   //  message(str_err_sd_mount, true, 1000, fb_saved);
   in_menu = true;
 
+#ifdef CAP_FLASH_ROM  
+  if (menu_first_run)
+    load_rom_from_flash(fb_saved);
+#endif
+
   while (1) {
     main_choice = selection_menu((char*) main_menu_items, true, false, true, 0, fb_saved);
     switch (main_choice) {
@@ -1775,9 +1804,11 @@ void emumgr_menu(gbuffer_t fb) {
           case 1:
             S9xReset();
         
-            if (!LoadROM(NULL))
+            if (!LoadROM(NULL)) {
               message(str_err_rom, true, 0, fb_saved);
-            rom_loaded = 2;
+              break;
+            }
+            rom_loaded = ROM_LOADED;
 
             goto leave;
             break;
@@ -1790,7 +1821,7 @@ void emumgr_menu(gbuffer_t fb) {
         
         break;
       case 1:
-        if (rom_loaded == 0) {
+        if (rom_loaded != ROM_LOADED) {
           message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }
@@ -1822,7 +1853,7 @@ void emumgr_menu(gbuffer_t fb) {
         }          
         break;
       case 2:
-        if (rom_loaded == 0) {
+        if (rom_loaded != ROM_LOADED) {
           message(str_load_game_first, true, MESSAGE_DELAY_LONG, fb_saved);
           break;
         }

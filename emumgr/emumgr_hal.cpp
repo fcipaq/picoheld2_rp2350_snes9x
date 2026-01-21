@@ -60,11 +60,14 @@ void em_get_backbuffer(gbuffer_t* fb_back) {
 
 void em_request_pageflip() {
   // this is a relatively reliable location in the code
-  // to check if the main thread is still running
+  // to check whether the main thread is still running
   watchdog_hw->load = 5000 * 1000;  // 2s
 
-  //lcd.refresh();
   lcd.request_pageflip();
+}
+
+void em_lcd_refresh() {
+  lcd.refresh();  // for FRR this does nothing
 }
 
 void em_lcd_backlight_set(int value) {
