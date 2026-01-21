@@ -56,6 +56,7 @@
 
 #define STR_BAT "Show Battery"
 #define STR_FPS "Show FPS"
+#define STR_VSYNC "Force vsync"
 #define STR_SUBSCREEN_MEM "Subscreen memory"
 #define STR_SUBSCREEN_PSRAM "PSRAM"
 #define STR_SUBSCREEN_SHARED "shared"

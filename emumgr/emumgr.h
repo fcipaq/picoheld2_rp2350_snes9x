@@ -25,6 +25,9 @@
 
 #include "gbuffers.h"
 
+// Capabilites
+#define CAP_BATTERY
+
 typedef struct {
   volatile int volume;
   volatile bool muted;
@@ -34,6 +37,7 @@ typedef struct {
   bool manual_framedrop;
   bool copy_rom_to_flash;
   bool psram_subscreen;
+  bool vsync;
 } emulator_state_t;
 
 void emumgr_menu(gbuffer_t fb);

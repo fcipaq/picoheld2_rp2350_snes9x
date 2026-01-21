@@ -27,8 +27,8 @@
 
 #include "emumgr_hal.h"
 #include "emumgr.h"
-//#include "emumgr_lang_de.h"
-#include "emumgr_lang_en.h"
+#include "emumgr_lang_de.h"
+//#include "emumgr_lang_en.h"
 #include "heapstrings.h"
 
 // assets
@@ -183,6 +183,16 @@ const char* main_menu_items = { STR_MAIN_TITLE"\0"\
                                  STR_SHUTDOWN"\0"\
                                  MENU_LST };
 
+#ifdef CAP_VSYNC
+const char settings_menu_items[] = { STR_OPTIONS"\0"\
+					 									         STR_FPS"\0"\
+                                     STR_BAT"\0"\
+                                     STR_FRAMEDROP_MODE "\0"\
+                                     STR_SUBSCREEN_MEM "\0"\
+                                     STR_VSYNC"\0"\
+                                     STR_GO_BACK"\0"\
+                                     MENU_LST };
+#else
 const char settings_menu_items[] = { STR_OPTIONS"\0"\
 					 									         STR_FPS"\0"\
                                      STR_BAT"\0"\
@@ -190,6 +200,7 @@ const char settings_menu_items[] = { STR_OPTIONS"\0"\
                                      STR_SUBSCREEN_MEM "\0"\
                                      STR_GO_BACK"\0"\
                                      MENU_LST };
+#endif
 
 const char save_menu[] = { STR_SAVE_STATE"\0"\
                            MENU_LST };
@@ -218,6 +229,8 @@ const char* str_subscreen_mem =  STR_SUBSCREEN_MEM;
 const char* str_subscreen_psram =  STR_SUBSCREEN_PSRAM;
 
 const char* str_subscreen_shared =  STR_SUBSCREEN_SHARED;
+
+const char* str_vsync = STR_VSYNC;
 
 const char str_loading[] = {  STR_LOADING"\0"\
                               MENU_LST };
@@ -292,7 +305,7 @@ void stars_draw(gbuffer_t fb) {
 }
 
 void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
-#if 1
+#ifdef CAP_BATTERY
   if (pwr_get_source() != PWR_ON_GRD) {
       if ((pwr_get_bat_vol() <= (PWR_BAT_MIN_VOL + 50)) && !brownout_det) {
       brownout_det_timer = millis();
@@ -307,7 +320,6 @@ void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
   } else {
     brownout_det = false;
   }
-#endif
 
   if (!emulator_state.show_bat && !brownout_det && !in_menu)
     return;
@@ -350,6 +362,7 @@ void draw_battery(int x, int y, int level, gbuffer_t fb_back) {
     blit_buf_blend(x, y, 0xf81f, 80, draw_battery_gbuf, fb_back);
   else
     blit_buf_blend(x, y, 0xf81f, 40, draw_battery_gbuf, fb_back);
+#endif
 }
 
 int read_image_to_gbuf(char* filename, gbuffer_t fb) {
@@ -1716,7 +1729,10 @@ void emumgr_menu(gbuffer_t fb) {
     Memory.ROM_is_writable = false;
     Memory.ROM = (uint8_t*) ROM_DATA;
     Memory.ROM_Size = ROM_SIZE;
-    rom_loaded = 1;
+    if (!LoadROM(NULL))
+     rom_loaded = 1;
+    else
+     rom_loaded = 2;
 #endif
 
     bl_fade_in();
@@ -1955,6 +1971,22 @@ void emumgr_menu(gbuffer_t fb) {
             message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
 
             break;
+#ifdef CAP_VSYNC
+          case 4:
+            emulator_state.vsync = !emulator_state.vsync;
+
+            strcpy(char_tmp, str_vsync);
+            strcat(char_tmp, ": ");
+            if (emulator_state.vsync)
+              strcat(char_tmp, STR_ON);
+            else
+              strcat(char_tmp, STR_OFF);
+            char_tmp[strlen(char_tmp) + 1] = terminatorstring;
+            message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
+            em_lcd_set_vsync(emulator_state.vsync);
+
+            break;
+#endif
           default:
             break;
         }
