@@ -1718,6 +1718,8 @@ void bl_fade_in() {
 
 void emumgr_menu(gbuffer_t fb) {
   if (menu_first_run) {
+    em_hal_init();
+    
     // TODO: fixme
     emulator_state.brightness = 40;
     emulator_state.volume = 2;

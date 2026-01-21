@@ -26,6 +26,9 @@
 #define DIRECTORY_MAX_ITEMS (100)
 #define DIRECTORY_BUFFER_SIZE (DIRECTORY_MAX_ITEMS * MAX_ITEM_LEN + 1)
 
+/* ============================================ HAL ===================================================*/
+bool em_hal_init();
+
 /* ============================================ LCD ===================================================*/
 void em_get_backbuffer(gbuffer_t* fb_back);
 void em_request_pageflip();

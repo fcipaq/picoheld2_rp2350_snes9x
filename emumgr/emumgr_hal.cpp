@@ -29,6 +29,7 @@
 #include "hardware/flash.h"
 #include <hardware/xip_cache.h>
 #include "pico/bootrom.h"
+#include "hardware/watchdog.h"
 
 #include "heapstrings.h"
 
@@ -46,12 +47,23 @@ FIL fil;
 FATFS fs_handle;
 extern LCD_DPI lcd;
 
+/* ============================================ HAL ===================================================*/
+bool em_hal_init() {
+  watchdog_enable(5000, false);
+  return true;
+}
+
 /* ============================================ LCD ===================================================*/
 void em_get_backbuffer(gbuffer_t* fb_back) {
   lcd.get_backbuffer(fb_back);
 }
 
 void em_request_pageflip() {
+  // this is a relatively reliable location in the code
+  // to check if the main thread is still running
+  watchdog_hw->load = 5000 * 1000;  // 2s
+
+  //lcd.refresh();
   lcd.request_pageflip();
 }
 
