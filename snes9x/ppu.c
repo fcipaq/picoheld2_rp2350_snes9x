@@ -488,7 +488,7 @@ void __not_in_flash_func(S9xSetPPU)(uint8_t Byte, uint16_t Address)
          {
             if (Byte & 0x04)
             {
-               PPU.ScreenHeight = SNES_HEIGHT_EXTENDED;
+               //PPU.ScreenHeight = SNES_HEIGHT_EXTENDED; // fcipaq disabled due to RAM constraints
                if (IPPU.DoubleHeightPixels)
                   IPPU.RenderedScreenHeight = PPU.ScreenHeight << 1;
                else

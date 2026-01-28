@@ -36,6 +36,8 @@ void em_get_backbuffer(gbuffer_t* fb_back);
 void em_request_pageflip();
 void em_lcd_refresh();
 void em_lcd_backlight_set(int value);
+int em_lcd_get_width();
+int em_lcd_get_height();
 
 /* ============================================ PSRAM ===================================================*/
 void* em_psram_malloc(uint32_t size);

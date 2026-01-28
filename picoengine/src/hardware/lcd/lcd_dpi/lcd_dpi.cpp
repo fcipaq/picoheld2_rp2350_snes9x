@@ -93,11 +93,11 @@ void LCD_DPI::display_init() {
 }
 
 int LCD_DPI::get_screen_width() {  // todo: make inline
-  return m_screen_width;
+  return 256;
 }
 
 int LCD_DPI::get_screen_height() {  // todo: make inline
-  return m_screen_height;
+  return 224;
 }
 
 int LCD_DPI::get_screen_bpp() {  // todo: make inline
@@ -165,7 +165,7 @@ void __no_inline_not_in_flash_func(LCD_DPI::retrace)() {
 }
 
 bool once = false;
-int fb_lst = - 1;;
+int fb_lst = - 1;
 
 void __no_inline_not_in_flash_func(LCD_DPI::refresh_exec)() {
   // reset RLUT
@@ -930,9 +930,9 @@ lcd_error_t LCD_DPI::refresh() {
     sem_acquire_blocking(&dma_tx_done);
     cycle_bufs();
     refresh_exec();
-  }
-  else
+  } else {
     return LCD_RMOD_ERR;
+  }
 
   return LCD_SUCCESS;
 }

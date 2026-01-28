@@ -67,11 +67,19 @@ void em_request_pageflip() {
 }
 
 void em_lcd_refresh() {
-  lcd.refresh();  // for FRR this does nothing
+  //lcd.refresh();  // for FRR this does nothing
 }
 
 void em_lcd_backlight_set(int value) {
   lcd_backlight_set(value);
+}
+
+int em_lcd_get_width() {
+   return lcd.get_screen_width();
+}
+
+int em_lcd_get_height() {
+   return lcd.get_screen_height();
 }
 
 /* ============================================ PSRAM ===================================================*/
@@ -102,7 +110,7 @@ bool em_get_directory(char *path, char* buffer) {
             if (!(fno.fattrib & AM_DIR)) {
 #ifdef ALPHABETIZE
               // alphabetize  
-              for (int i = 0; i < item_cnt; i++) {
+              for (int i = 0; i <= item_cnt; i++) {
                 bool leave = false;                
                 char* item_buf = get_item_aligned(i, buffer);
                 int len = strlen(item_buf) > strlen(fno.fname) ? strlen(fno.fname) : strlen(item_buf);

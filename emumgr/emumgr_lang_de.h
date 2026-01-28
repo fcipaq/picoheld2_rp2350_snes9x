@@ -69,6 +69,10 @@
 #define STR_SUBSCREEN_PSRAM "PSRAM"
 #define STR_SUBSCREEN_SHARED "geteilt"
 
+#define STR_REGION "Region"
+#define STR_PAL "PAL"
+#define STR_NTSC "NTSC"
+
 #define STR_ABOUT_TEXT "Snes9x on the Pico Held 2\0"\
                        " \0 "\
                        "github.com/fcipaq/snes9x_rp2350\0"\

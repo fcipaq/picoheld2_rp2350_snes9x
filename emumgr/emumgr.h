@@ -38,6 +38,7 @@ typedef struct {
   bool copy_rom_to_flash;
   bool psram_subscreen;
   bool vsync;
+  int region;
 } emulator_state_t;
 
 void emumgr_menu(gbuffer_t fb);

@@ -57,10 +57,14 @@
 #define STR_BAT "Show Battery"
 #define STR_FPS "Show FPS"
 #define STR_VSYNC "Force vsync"
+#define STR_FRAMEDROP_MODE "Framedrop mode"
 #define STR_SUBSCREEN_MEM "Subscreen memory"
 #define STR_SUBSCREEN_PSRAM "PSRAM"
 #define STR_SUBSCREEN_SHARED "shared"
-#define STR_FRAMEDROP_MODE "Framedrop mode"
+
+#define STR_REGION "Region"
+#define STR_PAL "PAL"
+#define STR_NTSC "NTSC"
 
 #define STR_ABOUT_TEXT "Snes9x on the Pico Held 2\0"\
                        " \0 "\

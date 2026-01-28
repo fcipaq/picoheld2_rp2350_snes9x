@@ -190,6 +190,7 @@ const char* main_menu_items = { STR_MAIN_TITLE"\0"\
 #ifdef CAP_VSYNC
 const char settings_menu_items[] = { STR_OPTIONS"\0"\
 					 									         STR_FPS"\0"\
+                                     STR_REGION"\0"\
                                      STR_BAT"\0"\
                                      STR_FRAMEDROP_MODE "\0"\
                                      STR_SUBSCREEN_MEM "\0"\
@@ -199,6 +200,7 @@ const char settings_menu_items[] = { STR_OPTIONS"\0"\
 #else
 const char settings_menu_items[] = { STR_OPTIONS"\0"\
 					 									         STR_FPS"\0"\
+                                     STR_REGION"\0"\
                                      STR_BAT"\0"\
                                      STR_FRAMEDROP_MODE "\0"\
                                      STR_SUBSCREEN_MEM "\0"\
@@ -262,7 +264,7 @@ int stars_init() {
 
     for (int i = 0; i < NUM_STARS; i++) {
       stars_x[i] = rand() % 240;
-      stars_y[i] = rand() % 224;
+      stars_y[i] = rand() % em_lcd_get_height();
       stars_speed[i] = (rand() % 3) + 1;
     }
   }
@@ -747,6 +749,7 @@ int progress_bar(const char* caption, int value, gbuffer_t fb) {
     return ERR_UNSPEC;
   
   gbuffer_t fb_back;
+  em_lcd_refresh();
   em_get_backbuffer(&fb_back);
 
   color_t menu_font_shadow_color = MENU_FONT_SHADOW_COLOR;
@@ -891,6 +894,7 @@ int slider_menu(char* caption, int start_val, int step, int brightness, gbuffer_
     step = 10;
 
   while (1) {
+    em_lcd_refresh();
     em_get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
     if (menu_first_run)
@@ -1052,6 +1056,7 @@ int selection_menu(char* item_list, bool centered, bool no_highlight, bool no_ca
   uint32_t timer = millis();
 
   while (!timed || (millis() - timer < delay) ) {
+    em_lcd_refresh();
     em_get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
     if (menu_first_run)
@@ -1358,7 +1363,7 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
   int menu_border_height = gbuf_get_height(corner_top_left);
 
   int clearance_y = 5;
-  int menu_height = SNES_HEIGHT / 2 + font_get_height(menu_font) + 2.5 * clearance_y - menu_border_height;  // difference for clearance of caption
+  int menu_height = em_lcd_get_height() / 2 + font_get_height(menu_font) + 2.5 * clearance_y - menu_border_height;  // difference for clearance of caption
   int menu_arrow_gap = 6;
   int menu_width = SNES_WIDTH / 2 + font_get_char_width('>', menu_font) + font_get_char_width('<', menu_font) + menu_arrow_gap;
   
@@ -1384,6 +1389,7 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
   }
 
   while (1) {
+    em_lcd_refresh();
     em_get_backbuffer(&fb_back);
     blit_buf(0, 0, BLIT_NO_ALPHA, fb, fb_back);
     if (menu_first_run)
@@ -1428,14 +1434,14 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
         draw_rect_fill(menu_offset_x + menu_width / 2 - SNES_WIDTH / 4,
                        menu_offset_y + font_get_height(menu_font) + clearance_y,
                        menu_offset_x + menu_width / 2 - SNES_WIDTH / 4  + SNES_WIDTH / 2 - 1,
-                       menu_offset_y + font_get_height(menu_font) + clearance_y  + SNES_HEIGHT / 2 - 1,
+                       menu_offset_y + font_get_height(menu_font) + clearance_y  + em_lcd_get_height() / 2 - 1,
                        0xf81f,
                        fb_back);
         */
       }
 
       blit_buf_blend(menu_offset_x + menu_width / 2 - gbuf_get_width(dot_image) / 2,
-                     menu_offset_y + font_get_height(menu_font) + font_get_height(menu_font) / 2 + clearance_y + SNES_HEIGHT / 4 - gbuf_get_height(dot_image) / 2 ,
+                     menu_offset_y + font_get_height(menu_font) + font_get_height(menu_font) / 2 + clearance_y + em_lcd_get_height() / 4 - gbuf_get_height(dot_image) / 2 ,
                      0xf81f,
                      80,
                      dot_image,
@@ -1444,13 +1450,13 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
       char debug_print[3];
       itoa(cur_itm + 1, debug_print, 10);    
       font_write_string(menu_offset_x + menu_width / 2 - font_get_string_width(debug_print, menu_font) / 2 + 1,
-                                 menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4 + 1,
+                                 menu_offset_y + font_get_height(menu_font) + clearance_y + em_lcd_get_height() / 4 + 1,
                                  menu_font_shadow_color,
                                  debug_print,
                                  menu_font,
                                  fb_back);
       font_write_string(menu_offset_x + menu_width / 2 - font_get_string_width(debug_print, menu_font) / 2,
-                                 menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4,
+                                 menu_offset_y + font_get_height(menu_font) + clearance_y + em_lcd_get_height() / 4,
                                  menu_font_caption_color,
                                  debug_print,
                                  menu_font,
@@ -1458,13 +1464,13 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
 
     } else {
       font_write_string_centered(menu_offset_x + menu_width / 2 + 1,
-                                 menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4 + 1,
+                                 menu_offset_y + font_get_height(menu_font) + clearance_y + em_lcd_get_height() / 4 + 1,
                                  menu_font_shadow_color,
                                  (char*) str_back,
                                  menu_font,
                                  fb_back);
       font_write_string_centered(menu_offset_x + menu_width / 2,
-                                 menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4,
+                                 menu_offset_y + font_get_height(menu_font) + clearance_y + em_lcd_get_height() / 4,
                                  menu_font_caption_color,
                                  (char*) str_back,
                                  menu_font,
@@ -1474,13 +1480,13 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
     // left/right arrows
     if (cur_itm != 0) {
       font_put_char(menu_offset_x - menu_border_width + menu_arrow_gap + 1,
-                    menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4 + 1,
+                    menu_offset_y + font_get_height(menu_font) + clearance_y + em_lcd_get_height() / 4 + 1,
                     menu_font_shadow_color,
                     '<',
                     menu_font,
                     fb_back);
       font_put_char(menu_offset_x - menu_border_width + menu_arrow_gap,
-                    menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4,
+                    menu_offset_y + font_get_height(menu_font) + clearance_y + em_lcd_get_height() / 4,
                     menu_font_caption_color,
                     '<',
                     menu_font, fb_back);
@@ -1488,13 +1494,13 @@ int savestate_selector(const char* caption, char* filename, gbuffer_t fb) {
 
     if (cur_itm != (num_itms - 1)) {
       font_put_char(menu_offset_x + menu_border_width - menu_arrow_gap + menu_width - font_get_char_width('>', menu_font) + 1,
-                    menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4 + 1,
+                    menu_offset_y + font_get_height(menu_font) + clearance_y + em_lcd_get_height() / 4 + 1,
                     menu_font_shadow_color,
                     '>',
                     menu_font,
                     fb_back);
       font_put_char(menu_offset_x + menu_border_width - menu_arrow_gap + menu_width - font_get_char_width('>', menu_font),
-                    menu_offset_y + font_get_height(menu_font) + clearance_y + SNES_HEIGHT / 4,
+                    menu_offset_y + font_get_height(menu_font) + clearance_y + em_lcd_get_height() / 4,
                     menu_font_caption_color,
                     '>',
                     menu_font, fb_back);
@@ -1726,7 +1732,8 @@ void load_rom_from_flash(gbuffer_t fb_saved) {
     Memory.ROM = (uint8_t*) ROM_DATA;
     Memory.ROM_Size = ROM_SIZE;
     rom_loaded = ROM_IN_MEM;
-#else
+#endif
+#ifdef CAP_FLASH_ROM
     Memory.ROM_is_writable = false;
     Memory.ROM = (uint8_t*) (uint32_t (FLASH_ROM_ADDRESS + 4));
     Memory.ROM_Size = *((uint32_t*) (uint32_t FLASH_ROM_ADDRESS));
@@ -1774,7 +1781,7 @@ void emumgr_menu(gbuffer_t fb) {
     return;
   }
 
-  if (gbuf_create(&fb_saved, SNES_WIDTH, SNES_HEIGHT, (void*) em_psram_malloc(SNES_WIDTH * SNES_HEIGHT * 2)) != BUF_SUCCESS) {
+  if (gbuf_create(&fb_saved, SNES_WIDTH, em_lcd_get_height(), (void*) em_psram_malloc(SNES_WIDTH * em_lcd_get_height() * 2)) != BUF_SUCCESS) {
     em_printf("Error: Cannot allocate PSRAM\n");
     return;
   }
@@ -1788,7 +1795,7 @@ void emumgr_menu(gbuffer_t fb) {
   //  message(str_err_sd_mount, true, 1000, fb_saved);
   in_menu = true;
 
-#ifdef CAP_FLASH_ROM  
+#if defined CAP_FLASH_ROM || defined HEADER_ROM
   if (menu_first_run)
     load_rom_from_flash(fb_saved);
 #endif
@@ -1964,7 +1971,30 @@ void emumgr_menu(gbuffer_t fb) {
 
             message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
             break;
-          case 1: 
+          case 1:
+            emulator_state.region++;
+            emulator_state.region %= 3;            
+
+            strcpy(char_tmp, STR_REGION);
+            strcat(char_tmp, ": ");
+            if (emulator_state.region == 0) {
+              strcat(char_tmp, STR_AUTO);
+              Settings.ForcePAL = false;
+              Settings.ForceNTSC = false;
+            } else if (emulator_state.region == 1) {
+              strcat(char_tmp, STR_PAL);
+              Settings.ForcePAL = true;
+              Settings.ForceNTSC = false;
+            } else if (emulator_state.region == 2) {
+              strcat(char_tmp, STR_NTSC);
+              Settings.ForcePAL = false;
+              Settings.ForceNTSC = true;
+            }
+            char_tmp[strlen(char_tmp) + 1] = terminatorstring;
+
+            message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
+            break;
+          case 2: 
             emulator_state.show_bat = !emulator_state.show_bat;
 
             strcpy(char_tmp, STR_BAT);
@@ -1978,7 +2008,7 @@ void emumgr_menu(gbuffer_t fb) {
             message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
 
             break;
-          case 2:
+          case 3:
             emulator_state.manual_framedrop = !emulator_state.manual_framedrop;
 
             strcpy(char_tmp, STR_FRAMEDROP_MODE);
@@ -1991,7 +2021,7 @@ void emumgr_menu(gbuffer_t fb) {
             message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
 
             break;
-          case 3:
+          case 4:
             emulator_state.psram_subscreen = !emulator_state.psram_subscreen;
 
             strcpy(char_tmp, str_subscreen_mem);
@@ -2005,7 +2035,7 @@ void emumgr_menu(gbuffer_t fb) {
 
             break;
 #ifdef CAP_VSYNC
-          case 4:
+          case 5:
             emulator_state.vsync = !emulator_state.vsync;
 
             strcpy(char_tmp, str_vsync);
@@ -2036,6 +2066,8 @@ void emumgr_menu(gbuffer_t fb) {
   }
 
 leave:
+
+  em_lcd_refresh();  // for FRR this does nothing
 
   em_sd_deinit();
   if (!emulator_state.muted)

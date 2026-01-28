@@ -45,7 +45,7 @@ bool pwr_sd_det() {
   if (sd_force_off)
     return false;
 
-  return gpio_get(PIN_SD_DET);
+  return gpio_get(PIN_SD_DET) == 1 ? true : false;
 }
 
 // Read raw battery voltage (without averaging)

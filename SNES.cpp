@@ -1,11 +1,32 @@
 /*
+ * Snes9x on the Pico Held 2 RP2350
+ *
+ * Copyright (C) 2025-26 Daniel Kammer (daniel.kammer@web.de)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+/*
 0 kb ram free
-And Scratch Y heap overlaps stack. 
+And Scratch Y heap overlaps stack.
+All allocations happen at compile time, so memory overflows may be detected easier
 */
 
 #include <picoengine.h>
-#include <fonts/fontfiles/f13x16.h>
-#include <fonts/fontfiles/picoheld_pixel_5x7_rosa.h>
+//#include <fonts/fontfiles/f13x16.h>
+#include <fonts/fontfiles/picoheld_pixel_14_numbers.h>
 
 //#include <Arduino.h>
 
@@ -46,12 +67,10 @@ extern "C" {
 #include "snes9x/gfx.h"
 }
 
-#include <malloc.h>
-
 #define AUDIO_ENABLE
 
 // display
-uint8_t ZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
+uint8_t ZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];  // EXTENDED HEIGHT disabled in PPU.c for memory constraints !!!
 uint8_t SubZBuffer[SNES_WIDTH * SNES_HEIGHT * 1];
 
 LCD_DPI lcd = LCD_DPI();
@@ -107,7 +126,7 @@ bool S9xInitDisplay(void)
     GFX.SubScreen = GFX.Screen;
     GFX.ZBuffer = ZBuffer;
 
-    GFX.SubZBuffer = SubZBuffer; // (uint8_t *) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);  // 56 kB
+    GFX.SubZBuffer = SubZBuffer; //(uint8_t *) sfe_mem_malloc(GFX.ZPitch * SNES_HEIGHT_EXTENDED);  // 56 kB
     
     return GFX.Screen && GFX.SubScreen && GFX.ZBuffer && GFX.SubZBuffer;
 }
@@ -283,15 +302,6 @@ void setup(void) {
 
 }
 
-void print_memory_usage() {
-    struct mallinfo info = mallinfo();
-
-    printf("Total allocated: %d bytes\n", info.uordblks);
-    printf("Total free: %d bytes\n", info.fordblks);
-    printf("Total heap size: %d bytes\n", info.arena);
-    printf("Largest free block: %d bytes\n", info.ordblks);
-}
-
 int main(void)
 {
   setup();
@@ -305,9 +315,6 @@ int main(void)
   Settings.SoundPlaybackRate = AUDIO_SAMPLE_RATE;
   Settings.DisableSoundEcho = false;
   Settings.InterpolatedSound = true;
-#ifdef USE_BLARGG_APU
-  Settings.SoundInputRate = AUDIO_SAMPLE_RATE;
-#endif
   Memory.ROM = NULL;
 
   if (!S9xInitMemory())
@@ -325,33 +332,30 @@ int main(void)
   if (!S9xInitGFX())
       emu_panic("Graphics init failed!\n");
 
+  em_request_pageflip();
   emumgr_menu(fb_back);
 
   target_fps = TARGET_FPS;//Memory.ROMFramesPerSecond;
   int frame_time = 1000000 / target_fps;
 
-#ifdef USE_BLARGG_APU
-    S9xSetSamplesAvailableCallback(S9xAudioCallback);
-#else
-    S9xSetPlaybackRate(Settings.SoundPlaybackRate);
-#endif
+  S9xSetPlaybackRate(Settings.SoundPlaybackRate);
 
-    // speed control
-    uint32_t startTime;
+  // speed control
+  uint32_t startTime;
 
-    int32_t framedrop_balance = 0;
-    int frame_no = 0;
-    int dropped_frames = 0;
-    int manual_framedrop = 0;  // between two drawn frames there be skipped manual_framedrop frames
-    int manual_framedrop_cnt = 0;
-    int dfps = 0;
-    unsigned long fps_timer = millis();
+  int32_t framedrop_balance = 0;
+  int frame_no = 0;
+  int dropped_frames = 0;
+  int manual_framedrop = 0;  // between two drawn frames there be skipped manual_framedrop frames
+  int manual_framedrop_cnt = 0;
+  int dfps = 0;
+  unsigned long fps_timer = millis();
 
-    // battery
-    uint32_t bat_volt = 0;
-    uint32_t bat_volt_cnt = 0;
+  // battery
+  uint32_t bat_volt = 0;
+  uint32_t bat_volt_cnt = 0;
 #ifdef ENABLE_PSRAM_FB
-    gbuffer_t fb_back_psram;
+  gbuffer_t fb_back_psram;
 #endif
 
 #ifdef AUDIO_ENABLE
@@ -361,17 +365,16 @@ int main(void)
   multicore_launch_core1(core1task);
 #endif
 
-//#define PSRAM_TEST
-#ifdef PSRAM_TEST
-  uint32_t* psram_test_buffer = (uint32_t*) sfe_mem_malloc(1024 * 1024 * 4);
-  assert(psram_test_buffer);
-  int skippy = 0;
-  int tainted = 0;
-  int untainted = 0;
-#endif
- 
     while (1) {
       ctrl_button_state_update();
+
+      if (ctrl_is_pressed(BUTTON_SW)) {
+        emumgr_menu(fb_back);
+        IPPU.RenderThisFrame == false;
+        framedrop_balance = 0;
+        fps_timer = millis();
+        startTime = micros();
+      }      
 
       if (emulator_state.manual_framedrop) {
         if (!manual_framedrop) {
@@ -392,19 +395,13 @@ int main(void)
 #ifdef ENABLE_PSRAM_FB
         lcd.get_psram_backbuffer(&fb_back_psram);
 #endif
+        
         GFX.Screen = (uint8_t*) fb_back.data;
+
         GFX.SubScreen = emulator_state.psram_subscreen ? subscreen : GFX.Screen;
       }
 
       S9xMainLoop();
-
-      if (ctrl_is_pressed(BUTTON_SW)) {
-        emumgr_menu(fb_back);
-        IPPU.RenderThisFrame == false;
-        framedrop_balance = 0;
-        fps_timer = millis();
-        startTime = micros();
-      }      
 
 #ifdef AUDIO_ENABLE
       mutex_exit(&audio_generate);
@@ -415,13 +412,15 @@ int main(void)
 
       if (emulator_state.show_fps) {
         char debug_print[20];
+          //pwr_sd_sply(1);
+          //itoa(pwr_sd_det() == true ? 1 : 0, debug_print, 10);
         itoa(target_fps - dfps, debug_print, 10);
-        font_write_string(14, 6, 0x0, debug_print, (font_t*) font_13x16, fb_back);
+        font_write_string(14, 6, 0x0, debug_print, (font_t*) picoheld_pixel_14_numbers, fb_back);
         int r = (511 * dfps) / target_fps;
         int g = 511 - r;
         if (r > 255) r = 255;
         if (g > 255) g = 255;
-        font_write_string(13, 5, rgb_col_888_565(r, g, 0), debug_print, (font_t*) font_13x16, fb_back);
+        font_write_string(13, 5, rgb_col_888_565(r, g, 0), debug_print, (font_t*) picoheld_pixel_14_numbers, fb_back);
       }
 
 #ifdef ENABLE_PSRAM_FB
@@ -429,53 +428,7 @@ int main(void)
 #else
       draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
 #endif
-
-      #if 0 // bat info
-      char debug_print[10];
-      itoa(bat_volt, debug_print, 10);
-      font_write_string(11, 11 + 15, 0x0, debug_print, (font_t*) font_13x16, fb_back);
-      font_write_string(10, 10 + 15, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
-
-      itoa(pwr_get_bat_level(4 /* granularity */), debug_print, 10);
-      font_write_string(11, 11 + 30, 0x0, debug_print, (font_t*) font_13x16, fb_back);
-      font_write_string(10, 10 + 30, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
-
-      if (pwr_get_source() == PWR_ON_GRD) {
-      font_write_string(11, 11 + 45, 0x0, "GRD", (font_t*) font_13x16, fb_back);
-      font_write_string(10, 10 + 45, 0xffff, "GRD", (font_t*) font_13x16, fb_back);
-      } else {
-      font_write_string(11, 11 + 45, 0x0, "BAT", (font_t*) font_13x16, fb_back);
-      font_write_string(10, 10 + 45, 0xffff, "BAT", (font_t*) font_13x16, fb_back);
-      }
-      #endif
     }
-
-#ifdef PSRAM_TEST
-    skippy++;
-    if (skippy > 200) {
-
-      for (uint32_t i = 0; i < 1024 * 1024; i++)
-        psram_test_buffer[i] = i;
-
-      for (uint32_t i = 0; i < 1024 * 1024; i++) {
-        if (psram_test_buffer[i] != i) {
-          tainted++;
-          break;
-        }
-      }
-      skippy = 0;
-      untainted++;
-      printf("memory corruption (tainted/untainted): %d/%d\n", tainted, untainted);
-    }
-
-    char debug_print[20];
-    itoa(untainted, debug_print, 10);
-    font_write_string(11, 11 + 75, 0x0, debug_print, (font_t*) font_13x16, fb_back);
-    font_write_string(10, 10 + 75, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
-    itoa(tainted, debug_print, 10);
-    font_write_string(11, 11 + 90, 0x0, debug_print, (font_t*) font_13x16, fb_back);
-    font_write_string(10, 10 + 90, 0xffff, debug_print, (font_t*) font_13x16, fb_back);
-#endif
 
     if (IPPU.RenderThisFrame == true)
       em_request_pageflip();
@@ -496,13 +449,12 @@ int main(void)
 
     framedrop_balance += (micros() - startTime) - frame_time;
 
-    // Are we too slow
-    if (framedrop_balance > frame_time / 2) // fcipaq: TODO: what amount is best?
+    // Are we too slow?
+    if (framedrop_balance > frame_time / 2) // fcipaq: TODO: what's the best amount here?
       IPPU.RenderThisFrame = false;
   
-    // Are we too fast
-    if (framedrop_balance < (-frame_time / 2))   // Allow some jitter
-    {
+    // Are we too fast?
+    if (framedrop_balance < (-frame_time / 2)) {   // Allow some jitter
       int32_t fpsLimiter = micros();
       while (micros() - fpsLimiter < (-framedrop_balance))
         tight_loop_contents();
@@ -513,29 +465,6 @@ int main(void)
 
     frame_no++;
     if (millis() - fps_timer > 1000) {
-
-    #if 0
-      printf("Bat vol: %d\n", pwr_get_bat_vol());
-      printf("Power src: %d\n", pwr_get_source());
-      printf("A: %d\n", ctrl_is_pressed(BUTTON_A));
-      printf("B: %d\n", ctrl_is_pressed(BUTTON_B));
-      printf("X: %d\n", ctrl_is_pressed(BUTTON_X));
-      printf("Y: %d\n", ctrl_is_pressed(BUTTON_Y));
-      printf("L: %d\n", ctrl_is_pressed(BUTTON_L));
-      printf("R: %d\n", ctrl_is_pressed(BUTTON_R));
-      printf("ST: %d\n", ctrl_is_pressed(BUTTON_ST));
-      printf("SEL: %d\n", ctrl_is_pressed(BUTTON_SEL));
-      printf("ASW: %d\n", ctrl_is_pressed(BUTTON_SW));
-      printf("LEFT: %d %d\n", ctrl_is_pressed(BUTTON_LEFT), analog_read(PIN_DPAD_LR));
-      printf("RIGHT: %d %d\n", ctrl_is_pressed(BUTTON_RIGHT), analog_read(PIN_DPAD_LR));
-      printf("UP: %d %d\n", ctrl_is_pressed(BUTTON_UP), analog_read(PIN_DPAD_UD));
-      printf("DOWN: %d %d\n", ctrl_is_pressed(BUTTON_DOWN), analog_read(PIN_DPAD_UD));
-      printf("ANA X: %d\n", analog_read(PIN_ANALOG_X));
-      printf("ANA Y: %d\n", analog_read(PIN_ANALOG_Y));
-      printf("fps: %d (dropped: %d), (target fps is: %d)\n", frame_no * 1000 / (millis() - fps_timer), dropped_frames, target_fps);
-      printf("GPIO 43: %d\n", analog_read(43));
-      printf("GPIO 44: %d\n", analog_read(44));
-    #endif
       dfps = dropped_frames;
       dropped_frames = 0;
       frame_no = 0;
