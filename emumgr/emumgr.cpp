@@ -192,18 +192,18 @@ const char settings_menu_items[] = { STR_OPTIONS"\0"\
 					 									         STR_FPS"\0"\
                                      STR_REGION"\0"\
                                      STR_BAT"\0"\
-                                     STR_FRAMEDROP_MODE "\0"\
                                      STR_SUBSCREEN_MEM "\0"\
                                      STR_VSYNC"\0"\
                                      STR_GO_BACK"\0"\
                                      MENU_LST };
-#else
+#endif
+#ifdef CAP_MANUAL_FRAMEDROP
 const char settings_menu_items[] = { STR_OPTIONS"\0"\
 					 									         STR_FPS"\0"\
                                      STR_REGION"\0"\
                                      STR_BAT"\0"\
-                                     STR_FRAMEDROP_MODE "\0"\
                                      STR_SUBSCREEN_MEM "\0"\
+                                     STR_FRAMEDROP_MODE "\0"\
                                      STR_GO_BACK"\0"\
                                      MENU_LST };
 #endif
@@ -2009,19 +2009,6 @@ void emumgr_menu(gbuffer_t fb) {
 
             break;
           case 3:
-            emulator_state.manual_framedrop = !emulator_state.manual_framedrop;
-
-            strcpy(char_tmp, STR_FRAMEDROP_MODE);
-            strcat(char_tmp, ": ");
-            if (emulator_state.manual_framedrop)
-              strcat(char_tmp, STR_MANUAL);
-            else
-              strcat(char_tmp, STR_AUTO);           
-            char_tmp[strlen(char_tmp) + 1] = terminatorstring;
-            message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
-
-            break;
-          case 4:
             emulator_state.psram_subscreen = !emulator_state.psram_subscreen;
 
             strcpy(char_tmp, str_subscreen_mem);
@@ -2034,8 +2021,23 @@ void emumgr_menu(gbuffer_t fb) {
             message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
 
             break;
+#ifdef CAP_MANUAL_FRAMEDROP
+          case 4:
+            emulator_state.manual_framedrop = !emulator_state.manual_framedrop;
+
+            strcpy(char_tmp, STR_FRAMEDROP_MODE);
+            strcat(char_tmp, ": ");
+            if (emulator_state.manual_framedrop)
+              strcat(char_tmp, STR_MANUAL);
+            else
+              strcat(char_tmp, STR_AUTO);           
+            char_tmp[strlen(char_tmp) + 1] = terminatorstring;
+            message(char_tmp, true, MESSAGE_DELAY_SHORT, fb_saved);
+
+            break;
+#endif
 #ifdef CAP_VSYNC
-          case 5:
+          case 4:
             emulator_state.vsync = !emulator_state.vsync;
 
             strcpy(char_tmp, str_vsync);

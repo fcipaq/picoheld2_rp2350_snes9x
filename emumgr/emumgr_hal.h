@@ -28,6 +28,8 @@
 
 #define FLASH_ROM_ADDRESS (0x500000 + XIP_BASE)
 #define CAP_FLASH_ROM
+#define CAP_MANUAL_FRAMEDROP
+
 /* ============================================ HAL ===================================================*/
 bool em_hal_init();
 

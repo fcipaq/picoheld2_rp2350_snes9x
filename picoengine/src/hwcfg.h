@@ -39,14 +39,14 @@
 #define PIN_ANALOG_X  (45)
 #define PIN_ANALOG_Y  (47)
 
-#define PIN_BTN_A     (26)  // A
-#define PIN_BTN_B     (25)  // B
-#define PIN_BTN_X     (22)  // X
-#define PIN_BTN_Y     (24)  // Y
+#define PIN_BTN_X     (26)  // A
+#define PIN_BTN_A     (25)  // B
+#define PIN_BTN_Y     (22)  // X
+#define PIN_BTN_B     (24)  // Y
 #define PIN_BTN_L     (42)  // L
 #define PIN_BTN_R     (27)  // R
-#define PIN_BTN_ST    (29)  // St
-#define PIN_BTN_SEL   (23)  // Sel
+#define PIN_BTN_ST    (23)  // St
+#define PIN_BTN_SEL   (29)  // Sel
 #define PIN_BTN_SW    (46)  // Ana SW
 
 #define PIN_DPAD_LR   (43)  // LR

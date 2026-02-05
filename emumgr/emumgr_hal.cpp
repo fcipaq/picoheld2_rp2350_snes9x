@@ -49,7 +49,7 @@ extern LCD_DPI lcd;
 
 /* ============================================ HAL ===================================================*/
 bool em_hal_init() {
-  watchdog_enable(5000, false);
+  watchdog_enable(2000, false);
   return true;
 }
 
@@ -61,7 +61,7 @@ void em_get_backbuffer(gbuffer_t* fb_back) {
 void em_request_pageflip() {
   // this is a relatively reliable location in the code
   // to check whether the main thread is still running
-  watchdog_hw->load = 5000 * 1000;  // 2s
+  watchdog_hw->load = 2000 * 1000;  // 2s
 
   lcd.request_pageflip();
 }
