@@ -11,12 +11,14 @@ It's a Snes emulator running on the RP2350 microcontroller with just 520 KB of i
 It features a UI to configure the emulator, load and save games, and to load ROM files (from SD card into PSRAM).
 The target framerate is locked at 50 Hz. However, only a few games can consistently achieve this framerate. For less demanding titles like Super Mario World you get about 30-50 fps. More demanding games might cause framerates of 20 fps and below.
 
-## Building
+## Building and flashing
 
 Build with Pico SDK (I used version 2.1.1).
 You can find a prebuilt version in the artifacts directory.
 
-## Structure
+Turn off the Pico Held 2, then hold SELECT while pressing POWER (i.e. START) to enter bootloader mode.
+
+## Directory structure
 
 The subdirectories are as follows:
 
