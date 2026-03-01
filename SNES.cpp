@@ -18,19 +18,9 @@
  *
  */
 
-/*
-0 kb ram free
-And Scratch Y heap overlaps stack.
-All allocations happen at compile time, so memory overflows may be detected easier
-*/
-
 #include <picoengine.h>
-//#include <fonts/fontfiles/f13x16.h>
 #include <fonts/fontfiles/picoheld_pixel_14_numbers.h>
 
-//#include <Arduino.h>
-
-//#include <cassert>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -39,7 +29,6 @@ All allocations happen at compile time, so memory overflows may be detected easi
 #include "pico/mutex.h"
 #include "pico/multicore.h"
 #include "pico/flash.h"
-//#include "pico/time.h"
 #include "hardware/vreg.h"
 
 #include "pico/stdlib.h"  // overclock
@@ -354,9 +343,6 @@ int main(void)
   // battery
   uint32_t bat_volt = 0;
   uint32_t bat_volt_cnt = 0;
-#ifdef ENABLE_PSRAM_FB
-  gbuffer_t fb_back_psram;
-#endif
 
 #ifdef AUDIO_ENABLE
   mutex_init(&audio_generate);
@@ -392,12 +378,7 @@ int main(void)
 
       if (IPPU.RenderThisFrame) {
         em_get_backbuffer(&fb_back);
-#ifdef ENABLE_PSRAM_FB
-        lcd.get_psram_backbuffer(&fb_back_psram);
-#endif
-        
         GFX.Screen = (uint8_t*) fb_back.data;
-
         GFX.SubScreen = emulator_state.psram_subscreen ? subscreen : GFX.Screen;
       }
 
@@ -422,12 +403,7 @@ int main(void)
         if (g > 255) g = 255;
         font_write_string(13, 5, rgb_col_888_565(r, g, 0), debug_print, (font_t*) picoheld_pixel_14_numbers, fb_back);
       }
-
-#ifdef ENABLE_PSRAM_FB
-      draw_battery(219, 1, pwr_get_bat_level(4), fb_back_psram);
-#else
       draw_battery(219, 5, pwr_get_bat_level(4), fb_back);
-#endif
     }
 
     if (IPPU.RenderThisFrame == true)
