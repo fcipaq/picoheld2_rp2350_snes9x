@@ -86,7 +86,9 @@ void LCD_DPI::display_wake() {
 void LCD_DPI::display_init() {
   //lcd_spi_send(nv3052c_init_operations);
   //lcd_spi_send(st7701_type1_init_operations);
+  
   //lcd_spi_send(nv3052c_buydisplay_init_operations);
+  //#define LCD_GS_INV_UNSUPPORTED
 
   lcd_spi_send(sunmixic_init_operations);
   
@@ -918,6 +920,18 @@ lcd_error_t LCD_DPI::request_pageflip() {
 
   if (m_num_fb > 1)
     sem_acquire_blocking(&m_pageflip_pending);
+
+#if LCD_GS_INV_UNSUPPORTED
+  if (lst_returned_back_fb != -1) {
+      uint16_t* fb_tmp = m_fb[lst_returned_back_fb];
+      for (int y = 0; y < 224; y++)
+        for (int x = 0; x < 128; x++) {
+          uint16_t c_tmp = fb_tmp[x + y * 256];
+          fb_tmp[x + y * 256] = fb_tmp[255 - x + y * 256];
+          fb_tmp[255 - x + y * 256] = c_tmp;
+        }
+  }
+#endif
 
   return LCD_SUCCESS;
 

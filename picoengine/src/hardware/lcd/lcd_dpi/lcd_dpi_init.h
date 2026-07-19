@@ -250,7 +250,7 @@ static const uint8_t nv3052c_buydisplay_init_operations[] = {
 
 	//WRITE, 2, 0x36, 0x0a,  // MAD  // 0x02 = RGB, 0x0a = BGR
 
-  WRITE, 2, 0x36, 0x09, //default: 0X0a, // 0x09 flipped vertically and horizontally, 0a: default
+  WRITE, 2, 0x36, 0b1000, //default: 0X0a, // 0x09 flipped vertically and horizontally, 0a: default
 
 //	WRITE, 2, 0x3a, 0x60,  // 18 bit colors
 												

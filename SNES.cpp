@@ -256,7 +256,7 @@ void setup(void) {
 #endif
 
   // PSRAM
-  if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 90000000))  //70  // Pimoroni can do 90 - why?
+  if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 70000000))  //70  // Pimoroni can do 90 - why?
     emu_panic("sfe error\n");
   printf("Trying to get some PSRAM\n");
   uint16_t* test = (uint16_t*) sfe_mem_malloc(1024);
