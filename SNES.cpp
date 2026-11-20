@@ -246,15 +246,6 @@ void setup(void) {
  
   stdio_init_all();
 
-#if 0
-  // Initialize chosen UART peripheral (UART0 here)
-  uart_init(uart0, 115200);
-
-  // Set the GPIO pins for UART0 TX and RX
-  gpio_set_function(PIN_SD_CS_RX /* RX */, GPIO_FUNC_UART);
-  gpio_set_function(PIN_SD_MISO_TX /* TX */, GPIO_FUNC_UART);
-#endif
-
   // PSRAM
   if (!sfe_pico_alloc_init(PIN_PSRAM_CS, 70000000))  //70  // Pimoroni can do 90 - why?
     emu_panic("sfe error\n");

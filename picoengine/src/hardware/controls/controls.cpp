@@ -24,7 +24,7 @@
 #include "controls.h"
 #include <hwcfg.h>
 #include <cstdio>
-#define RP2350_E9_WA
+//#define RP2350_E9_WA
 
 uint16_t _analog_x_0 = 400;
 uint16_t _analog_y_0 = 400;
@@ -52,6 +52,12 @@ int _ctrl_lst_ret_y;
 #define BTN_RELEASED (0)
 #define BTN_PRESSED_ON_HI (true)
 #define BTN_PRESSED_ON_LO (false)
+
+#define WA_SEL_REG
+#ifdef WA_SEL_REG
+// Number of consecutive "pressed" samples required before BUTTON_SEL is accepted
+#define WA_SEL_REG_COUNT 3
+#endif
 
 /*
     { BUTTON_LEFT,  PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1450,                   -1, BTN_TIMER_ZERO}, 
@@ -97,10 +103,10 @@ keymap_t keymap[NUM_BTNS] = {
     { BUTTON_R,     PIN_BTN_R,   BTN_DIGITAL, BTN_RELEASED, BUTTON_PULL_MODE, BTN_NO_THRESHOLD, BTN_NO_THRESHOLD,     BTN_PRESSED_ON_LO, BTN_TIMER_ZERO}, 
     { BUTTON_SW,    PIN_BTN_SW,  BTN_ANALOG,   BTN_RELEASED,      BTN_PULLUP,                0,              500,                    -1, BTN_TIMER_ZERO}, 
 
-    { BUTTON_LEFT,  PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              2000,                   -1, BTN_TIMER_ZERO}, 
-    { BUTTON_RIGHT, PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2070,              4095,                   -1, BTN_TIMER_ZERO}, 
-    { BUTTON_UP,    PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              2000,                   -1, BTN_TIMER_ZERO}, 
-    { BUTTON_DOWN,  PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2070,              4095,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_LEFT,  PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1900,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_RIGHT, PIN_DPAD_LR,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2150,              4095,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_UP,    PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,                0,              1900,                   -1, BTN_TIMER_ZERO}, 
+    { BUTTON_DOWN,  PIN_DPAD_UD,  BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             2150,              4095,                   -1, BTN_TIMER_ZERO}, 
 /*
     { BUTTON_LEFT,  PIN_ANALOG_Y, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,               0,               1000,                   -1, BTN_TIMER_ZERO}, 
     { BUTTON_RIGHT, PIN_ANALOG_Y, BTN_ANALOG, BTN_RELEASED,      BTN_NO_PULL,             3000,              4095,                   -1, BTN_TIMER_ZERO}, 
@@ -146,7 +152,7 @@ int8_t ctrl_analog_x_state() {
    // if |ret| < zeroThreshold^2 return zero
   if (ret * ret < zeroThreshold)
    ret = 0;
-  
+
   // if the new value differs less than 10% from the old one it's being discarded
   if ((ret - _ctrl_lst_ret_x) * (ret - _ctrl_lst_ret_x) > zeroThreshold*zeroThreshold) {
     _ctrl_lst_ret_x = ret;
@@ -253,7 +259,7 @@ bool ctrl_is_pressed(int btn) {
     for (int i = 0; i < NUM_BTNS; i++)
       if (keymap[i].key_state == 1)
         return true;
-    
+
     return false;
   } else {
     return keymap[btn].key_state == 1;
@@ -262,9 +268,14 @@ bool ctrl_is_pressed(int btn) {
 
 uint32_t ctrl_button_state_update() {
     uint32_t res = 0;
-    
+
+#ifdef WA_SEL_REG
+    // consecutive raw "pressed" samples of BUTTON_SEL (HW flaw workaround)
+    static uint8_t sel_consec_cnt = 0;
+#endif
+
     for (int i = 0; i < NUM_BTNS; i++) {
-      
+
       int keyresult = 0;
 
       if (keymap[i].digital == BTN_DIGITAL) {
@@ -285,9 +296,23 @@ uint32_t ctrl_button_state_update() {
         }
         #endif
 
+        #ifdef WA_SEL_REG
+        // Only accept SEL after WA_SEL_REG_COUNT consecutive pressed samples
+        if (keymap[i].pin_id == BUTTON_SEL) {
+          if (keyresult) {
+            if (sel_consec_cnt < WA_SEL_REG_COUNT)
+              sel_consec_cnt++;
+          } else {
+            sel_consec_cnt = 0;
+          }
+          keyresult = (sel_consec_cnt >= WA_SEL_REG_COUNT) ? 1 : 0;
+        }
+        #endif
+
       } else {
 
         int adc_value = analog_read(keymap[i].gpio_num);
+        //printf("button: %d, ADC value is: %d\n", i, adc_value);
         if ((adc_value > keymap[i].threshold_1) && (adc_value < keymap[i].threshold_2))
           keyresult = 1;        
       }
@@ -302,10 +327,10 @@ uint32_t ctrl_button_state_update() {
         keymap[i].key_state = 0;
       }
     }
-    
+
     return res;
 }
-  
+
 
 int ctrl_init() {
   adc_init();
